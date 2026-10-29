@@ -110,6 +110,12 @@ app.add_middleware(
 )
 
 
+@app.get("/healthz")
+async def healthz():
+    """Simple 200 OK health check for Render and load balancers."""
+    return {"status": "ok", "service": "minglebot"}
+
+
 # --- Pydantic Request Models ---
 class UpdateSettingsRequest(BaseModel):
     like_delay_minutes: Optional[int] = Field(None, ge=1, le=60)

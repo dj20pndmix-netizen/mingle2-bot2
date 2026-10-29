@@ -81,6 +81,7 @@ def main():
     # Start FastAPI server on dynamic Render/host port
     host = os.getenv("HOST", settings.host)
     port = int(os.getenv("PORT", settings.port))
+    logging.info(f"Binding MingleBot web server to {host}:{port} (Render PORT={os.getenv('PORT')})")
 
     uvicorn.run(
         "src.server:app",

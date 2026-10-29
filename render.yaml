@@ -4,7 +4,7 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    healthCheckPath: /api/status
+    healthCheckPath: /healthz
     envVars:
       - key: HEADLESS_MODE
         value: "true"

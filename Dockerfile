@@ -8,10 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HEADLESS_MODE=true
 ENV HOST=0.0.0.0
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 # Install Python requirements
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy source code and static assets
 COPY src/ ./src/
