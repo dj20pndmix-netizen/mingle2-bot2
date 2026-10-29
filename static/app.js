@@ -460,8 +460,7 @@ async function openLoginBrowser() {
     const data = await res.json();
     if (data.status === 'cloud_warning') {
       showToast(data.message, 'warning', 8000);
-      const input = document.getElementById('session-zip-input');
-      if (input) input.click();
+      openCredentialsModal();
       return;
     }
 
@@ -1633,6 +1632,97 @@ function openSettingsModal() {
 function closeSettingsModal() {
   document.getElementById('settings-modal').classList.add('hidden');
   document.getElementById('settings-modal').classList.remove('flex');
+}
+
+// ============================================================================
+// DIRECT CREDENTIALS LOGIN MODAL (Render / Cloud Headless)
+// ============================================================================
+function openCredentialsModal() {
+  const modal = document.getElementById('credentials-login-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    const fb = document.getElementById('credentials-login-feedback');
+    if (fb) fb.classList.add('hidden');
+    const uInput = document.getElementById('login-username');
+    if (uInput) setTimeout(() => uInput.focus(), 100);
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+function closeCredentialsModal() {
+  const modal = document.getElementById('credentials-login-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function submitCredentialsLogin(event) {
+  if (event) event.preventDefault();
+  const username = document.getElementById('login-username')?.value?.trim();
+  const password = document.getElementById('login-password')?.value;
+  const feedback = document.getElementById('credentials-login-feedback');
+  const submitBtn = document.getElementById('btn-submit-credentials');
+  const submitText = document.getElementById('credentials-submit-text');
+  const submitIcon = document.getElementById('credentials-submit-icon');
+
+  if (!username || !password) {
+    if (feedback) {
+      feedback.className = 'p-3 rounded-xl text-xs bg-rose-500/10 border border-rose-500/30 text-rose-300';
+      feedback.innerText = 'Please enter both your Mingle2 username/email and password.';
+      feedback.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (submitText) submitText.innerText = 'Logging In...';
+  if (submitIcon) submitIcon.classList.add('animate-spin');
+  if (feedback) {
+    feedback.className = 'p-3 rounded-xl text-xs bg-purple-500/10 border border-purple-500/30 text-purple-200';
+    feedback.innerHTML = '<span class="animate-pulse">Connecting to Mingle2 and authenticating headless session...</span>';
+    feedback.classList.remove('hidden');
+  }
+
+  try {
+    showToast(`Attempting direct login for ${username}...`, 'info', 6000);
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login: username, password: password })
+    });
+    const data = await res.json();
+
+    if (data.status === 'success') {
+      showToast(data.message || 'Mingle2 login verified successfully!', 'success', 6000);
+      updateSessionStatus('CONNECTED', 'CONNECTED');
+      if (feedback) {
+        feedback.className = 'p-3 rounded-xl text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300';
+        feedback.innerText = data.message || 'Authenticated successfully!';
+      }
+      setTimeout(() => {
+        closeCredentialsModal();
+        loadDashboardStatus();
+      }, 1200);
+    } else {
+      showToast(data.message || 'Login failed.', 'error', 8000);
+      if (feedback) {
+        feedback.className = 'p-3 rounded-xl text-xs bg-rose-500/10 border border-rose-500/30 text-rose-300';
+        feedback.innerText = data.message || 'Authentication rejected.';
+      }
+    }
+  } catch (err) {
+    showToast('Network error during login: ' + err.message, 'error');
+    if (feedback) {
+      feedback.className = 'p-3 rounded-xl text-xs bg-rose-500/10 border border-rose-500/30 text-rose-300';
+      feedback.innerText = 'Network error: ' + err.message;
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+    if (submitText) submitText.innerText = 'Log In';
+    if (submitIcon) submitIcon.classList.remove('animate-spin');
+  }
 }
 
 function populateSettings(settings) {

@@ -117,6 +117,11 @@ async def healthz():
 
 
 # --- Pydantic Request Models ---
+class LoginCredentialsRequest(BaseModel):
+    login: str = Field(..., min_length=1, description="Username or email for Mingle2")
+    password: str = Field(..., min_length=1, description="Password for Mingle2")
+
+
 class UpdateSettingsRequest(BaseModel):
     like_delay_minutes: Optional[int] = Field(None, ge=1, le=60)
     scan_interval_seconds: Optional[int] = Field(None, ge=15, le=3600)
@@ -316,6 +321,31 @@ async def check_auth_status():
         "connection_status": get_connection_display_status(session_state),
         "status": get_connection_display_status(session_state),
     }
+
+
+@app.post("/api/auth/login")
+async def direct_login(req: LoginCredentialsRequest):
+    """Direct headless login using credentials for Cloud/Render environments."""
+    result = await scheduler.engine.login_with_credentials(req.login, req.password)
+    if result.get("status") == "success":
+        await database.add_log("SUCCESS", f"Authenticated successfully via direct login for '{req.login}'")
+        stats = await database.get_stats()
+        await manager.broadcast({"event": "stats_updated", "data": stats})
+        account_data = None
+        try:
+            account_data = await scheduler.engine.sync_account_profile()
+        except Exception:
+            pass
+        await manager.broadcast({
+            "event": "session_updated",
+            "data": {
+                "session_status": scheduler.engine.session_status,
+                "account": account_data
+            }
+        })
+    else:
+        await database.add_log("WARN", f"Direct login failed: {result.get('message')}")
+    return result
 
 
 @app.post("/api/browser/open-login")

@@ -460,6 +460,108 @@ class Mingle2BotEngine:
 
     open_login_window = open_login_browser
 
+    async def login_with_credentials(self, login: str, password: str) -> Dict[str, Any]:
+        """
+        Authenticates directly to Mingle2 using login credentials in headless mode.
+        Designed for Cloud/Render environments where physical GUI cannot be shown.
+        """
+        if not login or not password:
+            return {"status": "error", "message": "Email/Username and password are required."}
+
+        async with self._lock:
+            await self._log("INFO", f"Attempting direct headless login for '{login}'...")
+            await self.set_session_state(SessionState.OPENING_BROWSER)
+
+            try:
+                context = await self.get_context(headless=True)
+                page = await context.new_page()
+                await setup_ad_blocking(page)
+
+                await page.goto("https://mingle2.com/user/login", wait_until="domcontentloaded", timeout=45000)
+                await dismiss_page_overlays(page)
+                await asyncio.sleep(1.5)
+
+                # Check if already authenticated
+                cur_url = strip_google_vignette(page.url.lower())
+                if "/user/login" not in cur_url and "/sign_in" not in cur_url and "step1" not in cur_url:
+                    await page.close()
+                    await self.set_session_state(SessionState.CONNECTED)
+                    return {"status": "success", "message": "Already authenticated on Mingle2!"}
+
+                # Find input fields
+                login_input = page.locator("input[name='login'], input#login").first
+                pwd_input = page.locator("input[name='password'], input#password").first
+
+                if await login_input.count() == 0 or await pwd_input.count() == 0:
+                    await page.close()
+                    await self.set_session_state(SessionState.LOGIN_REQUIRED)
+                    return {"status": "error", "message": "Could not locate Mingle2 login form fields."}
+
+                await login_input.fill(login)
+                await asyncio.sleep(0.4)
+                await pwd_input.fill(password)
+                await asyncio.sleep(0.4)
+
+                submit_btn = page.locator("button[type='submit'], input[type='submit'], .form-with-recaptcha-action").first
+                if await submit_btn.count() > 0:
+                    await submit_btn.click()
+                else:
+                    await page.keyboard.press("Enter")
+
+                # Wait for form submission and redirect
+                await asyncio.sleep(4.5)
+                await dismiss_page_overlays(page)
+
+                # Check for explicit error banners on page
+                error_el = page.locator(".alert-danger, .error, .flash_error, .notice-error, .invalid-feedback").first
+                if await error_el.count() > 0:
+                    err_text = await error_el.inner_text()
+                    await page.close()
+                    await self.set_session_state(SessionState.LOGIN_REQUIRED)
+                    return {"status": "error", "message": f"Mingle2 login error: {err_text.strip()}"}
+
+                # Navigate to mutual match to confirm active authenticated session
+                try:
+                    await page.goto("https://mingle2.com/mutual_match/who_is_interested_in_me", wait_until="domcontentloaded", timeout=25000)
+                    test_url = strip_google_vignette(page.url.lower())
+                    if "/user/login" not in test_url and "/sign_in" not in test_url and "step1" not in test_url:
+                        storage_path = settings.data_dir / "storage_state.json"
+                        try:
+                            await context.storage_state(path=str(storage_path))
+                        except Exception:
+                            pass
+
+                        await page.close()
+                        await self.set_session_state(SessionState.CONNECTED)
+                        await self._log("SUCCESS", f"Direct login verified successfully for '{login}'!")
+
+                        try:
+                            from src.session_manager import export_session_archive
+                            export_session_archive()
+                        except Exception:
+                            pass
+
+                        try:
+                            await self.sync_account_profile()
+                        except Exception:
+                            pass
+
+                        return {"status": "success", "message": "Successfully logged into Mingle2!"}
+                except Exception as ex:
+                    logger.debug(f"Post-login verification error: {ex}")
+
+                await page.close()
+                await self.set_session_state(SessionState.LOGIN_REQUIRED)
+                return {
+                    "status": "error",
+                    "message": "Form was submitted but session could not be verified (reCAPTCHA challenge may have been triggered). Please use 'Upload Session Zip' from your PC."
+                }
+
+            except Exception as e:
+                await self._log("ERROR", f"Direct login error: {e}")
+                await self.set_session_state(SessionState.LOGIN_REQUIRED)
+                return {"status": "error", "message": str(e)}
+
     async def wait_for_login(self, timeout: int = 300) -> bool:
         """
         Polls the opened browser to detect authenticated Mingle2 application state.
