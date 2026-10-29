@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mingle2 Command Center & Multi-Task Automation Suite</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fdf2f8',
+              100: '#fce7f3',
+              400: '#f472b6',
+              500: '#ec4899',
+              600: '#db2777',
+              700: '#be185d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PWA Meta Tags & Manifest -->
+  <meta name="theme-color" content="#090d16">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MingleBot">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW reg failed: ', err));
+      });
+    }
+  </script>
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="p-3 md:p-6 min-h-screen text-slate-100">
+  <div class="max-w-[1600px] mx-auto space-y-5">
+
+    <!-- Top Navigation & Header -->
+    <header class="glass-panel rounded-2xl p-4 md:p-5 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+      <div class="flex items-center gap-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-pink-500/25 border border-pink-400/30">
+          <i data-lucide="zap" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              Mingle2 <span class="gradient-text-pink">Command Center</span>
+            </h1>
+            <span id="bot-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+              <span class="w-2 h-2 rounded-full bg-slate-400" id="bot-status-dot"></span>
+              <span id="bot-status-text">INITIALIZING</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Full-Sync Platform Automation: Account, Mailbox, Search, Matches, Online & Task Dispatcher.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+        <!-- Open Browser for Login -->
+        <button id="btn-login-browser" onclick="openLoginBrowser()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-500/20 transition-all hover:scale-[1.02]">
+          <i data-lucide="external-link" class="w-4 h-4"></i>
+          <span>Open Browser for Login</span>
+        </button>
+
+        <!-- Verify Session -->
+        <button id="btn-verify-session" onclick="verifySession()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition-all hover:scale-[1.02]">
+          <i data-lucide="shield-check" class="w-4 h-4" id="verify-session-icon"></i>
+          <span>Verify Session</span>
+        </button>
+
+        <!-- Start Automation -->
+        <button id="btn-start" onclick="startBot()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
+          <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+          <span>Start Automation</span>
+        </button>
+
+        <!-- Pause -->
+        <button id="btn-pause" onclick="pauseBot()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 transition-all hover:scale-[1.02]">
+          <i data-lucide="pause" class="w-4 h-4"></i>
+          <span>Pause</span>
+        </button>
+
+        <!-- Stop -->
+        <button id="btn-stop" onclick="stopBot()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition-all hover:scale-[1.02]">
+          <i data-lucide="square" class="w-4 h-4"></i>
+          <span>Stop</span>
+        </button>
+
+        <!-- Refresh -->
+        <button id="btn-refresh" onclick="refreshAll()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all hover:scale-[1.02]" title="Refresh all dashboard data">
+          <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-all-icon"></i>
+          <span>Refresh</span>
+        </button>
+
+        <!-- Diagnostics -->
+        <button id="btn-header-diag" onclick="switchTab('diagnostics')" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold text-xs md:text-sm bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition-all hover:scale-[1.02]" title="Open Diagnostics Screen">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>Diagnostics</span>
+        </button>
+
+        <!-- Test Mode Toggle Button -->
+        <button onclick="toggleTestMode()" id="btn-toggle-test-mode" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-semibold text-xs md:text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Toggle Safe Test Mode (Simulated Actions)">
+          <i data-lucide="shield" class="w-4 h-4 text-emerald-400" id="test-mode-icon"></i>
+          <span id="test-mode-btn-text">Test: OFF</span>
+        </button>
+
+        <!-- Settings Modal Button -->
+        <button onclick="openSettingsModal()" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" title="Automation Settings">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Test Mode Active Banner -->
+    <div id="test-mode-banner" class="hidden rounded-2xl p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/30 text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-amber-500/5">
+      <div class="flex items-center gap-2.5">
+        <span class="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+          <i data-lucide="shield-alert" class="w-4 h-4"></i>
+        </span>
+        <div>
+          <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">Test Mode Active (Safety Guaranteed)</span>
+          <p class="text-[11px] text-amber-300/80 mt-0.5">All like actions, countdown timers, and profile verifications are safely simulated with zero external mutations on your live Mingle2 account.</p>
+        </div>
+      </div>
+      <button onclick="toggleTestMode(false)" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 transition shrink-0">
+        Disable Test Mode
+      </button>
+    </div>
+
+    <!-- Navigation Tabs Bar -->
+    <div class="glass-panel rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto">
+      <button onclick="switchTab('dashboard')" id="tab-btn-dashboard" class="nav-tab-btn active px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="layout-dashboard" class="w-4 h-4 text-pink-400"></i>
+        <span>Dashboard</span>
+      </button>
+
+      <button onclick="switchTab('account')" id="tab-btn-account" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="user" class="w-4 h-4 text-purple-400"></i>
+        <span>Account</span>
+      </button>
+
+      <button onclick="switchTab('inbox')" id="tab-btn-inbox" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="mail" class="w-4 h-4 text-cyan-400"></i>
+        <span>Mailbox</span>
+        <span id="tab-badge-unread" class="hidden px-1.5 py-0.2 rounded-full text-[10px] bg-pink-500 text-white font-bold">0</span>
+      </button>
+
+      <button onclick="switchTab('matches')" id="tab-btn-matches" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="heart" class="w-4 h-4 text-rose-400"></i>
+        <span>Matches & Likes</span>
+        <span id="tab-badge-pending" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300 font-bold">0</span>
+      </button>
+
+      <button onclick="switchTab('search')" id="tab-btn-search" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="search" class="w-4 h-4 text-amber-400"></i>
+        <span>Search</span>
+      </button>
+
+      <button onclick="switchTab('online')" id="tab-btn-online" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="radio" class="w-4 h-4 text-emerald-400"></i>
+        <span>Who's Online</span>
+      </button>
+
+      <button onclick="switchTab('tasks')" id="tab-btn-tasks" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="list-todo" class="w-4 h-4 text-indigo-400"></i>
+        <span>Task Dispatcher</span>
+        <span id="tab-badge-tasks" class="hidden px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-500 text-white font-bold">0</span>
+      </button>
+
+      <button onclick="switchTab('diagnostics')" id="tab-btn-diagnostics" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+        <span>Diagnostics</span>
+      </button>
+
+      <button onclick="switchTab('console')" id="tab-btn-console" class="nav-tab-btn px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold text-slate-400 hover:text-white flex items-center gap-2 whitespace-nowrap border border-transparent">
+        <i data-lucide="terminal" class="w-4 h-4 text-slate-400"></i>
+        <span>Live Console</span>
+      </button>
+    </div>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 1: DASHBOARD -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-dashboard" class="space-y-5">
+      <!-- Master System Status & Controls Bar -->
+      <div class="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div class="flex items-center gap-3">
+            <span class="p-2.5 rounded-xl bg-pink-500/20 text-pink-400 border border-pink-500/30">
+              <i data-lucide="shield-check" class="w-6 h-6"></i>
+            </span>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-base font-bold text-white">Mingle2 Connection:</h2>
+                <span id="dashboard-connection-badge" class="px-3 py-1 rounded-xl text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  LOGIN REQUIRED
+                </span>
+                <span id="dashboard-session-state-text" class="text-xs text-slate-400 font-mono">
+                  (LOGIN_REQUIRED)
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 mt-0.5" id="dashboard-session-instructions">
+                Click "Open Browser for Login" to launch visible Chromium and sign in securely.
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="openLoginBrowser()" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 transition flex items-center gap-1.5">
+              <i data-lucide="external-link" class="w-4 h-4"></i>
+              <span>OPEN BROWSER FOR LOGIN</span>
+            </button>
+            <button onclick="verifySession()" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 transition flex items-center gap-1.5">
+              <i data-lucide="shield-check" class="w-4 h-4"></i>
+              <span>VERIFY SESSION</span>
+            </button>
+            <button onclick="switchTab('diagnostics')" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5">
+              <i data-lucide="activity" class="w-4 h-4"></i>
+              <span>DIAGNOSTICS</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- System Matrix: Browser, Account, Session, Automation, Queue, Completed, Failed, Matches -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-center">
+          <!-- Item 1: Browser -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Browser</span>
+            <span id="overview-browser-status" class="text-xs font-bold text-slate-300 block">Not Launched</span>
+            <button onclick="openLoginBrowser()" class="text-[10px] text-pink-400 hover:text-pink-300 font-semibold underline block mx-auto">Launch</button>
+          </div>
+
+          <!-- Item 2: Account -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Account</span>
+            <span id="overview-account-status" class="text-xs font-bold text-slate-200 truncate block">Not Connected</span>
+            <span class="text-[10px] text-slate-500 block truncate" id="overview-account-sub">Credentials Hidden</span>
+          </div>
+
+          <!-- Item 3: Session -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Session</span>
+            <span id="overview-session-verif" class="text-xs font-bold text-rose-400 block">NOT VERIFIED</span>
+            <button onclick="verifySession()" class="text-[10px] text-purple-400 hover:text-purple-300 font-semibold underline block mx-auto">Verify Now</button>
+          </div>
+
+          <!-- Item 4: Automation -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Automation</span>
+            <span id="overview-automation-state" class="text-xs font-bold text-slate-300 block">STOPPED</span>
+            <span class="text-[10px] text-slate-500 block">Scheduler</span>
+          </div>
+
+          <!-- Item 5: Queue -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Queue</span>
+            <span id="overview-queue-pending" class="text-base font-extrabold text-pink-400 block">0</span>
+            <span class="text-[10px] text-slate-500 block">Pending</span>
+          </div>
+
+          <!-- Item 6: Completed -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Completed</span>
+            <span id="overview-completed-count" class="text-base font-extrabold text-emerald-400 block">0</span>
+            <span class="text-[10px] text-slate-500 block">Liked Back</span>
+          </div>
+
+          <!-- Item 7: Failed -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Failed</span>
+            <span id="overview-failed-count" class="text-base font-extrabold text-rose-400 block">0</span>
+            <span class="text-[10px] text-slate-500 block">Blocked</span>
+          </div>
+
+          <!-- Item 8: Matches -->
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
+            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Matches</span>
+            <span id="overview-matches-count" class="text-base font-extrabold text-amber-400 block">0</span>
+            <span class="text-[10px] text-amber-500/80 block">Confirmed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Top Metric Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Card 1: Pending Likes -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-5 border-l-4 border-l-pink-500">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase font-medium tracking-wider text-slate-400">Scheduled Likes</span>
+            <span class="p-2 rounded-xl bg-pink-500/10 text-pink-400 border border-pink-500/20">
+              <i data-lucide="clock" class="w-5 h-5"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <span id="metric-pending" class="text-3xl font-extrabold text-white">0</span>
+            <span class="text-xs text-pink-400 font-medium">pending like-backs</span>
+          </div>
+          <p id="metric-next-countdown" class="text-xs text-slate-400 mt-2 truncate flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
+            Next in: <span class="text-slate-200 font-medium" id="next-timer-val">None scheduled</span>
+          </p>
+        </div>
+
+        <!-- Card 2: Total Liked -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-5 border-l-4 border-l-emerald-500">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase font-medium tracking-wider text-slate-400">Liked Back</span>
+            <span class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <span id="metric-liked" class="text-3xl font-extrabold text-white">0</span>
+            <span class="text-xs text-emerald-400 font-medium">profiles matched</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            Total detected: <span id="metric-total" class="text-slate-200 font-medium">0</span>
+          </p>
+        </div>
+
+        <!-- Card 3: Mailbox Threads -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-5 border-l-4 border-l-cyan-500">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase font-medium tracking-wider text-slate-400">Mailbox Activity</span>
+            <span class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <i data-lucide="message-square" class="w-5 h-5"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <span id="metric-inbox-threads" class="text-3xl font-extrabold text-white">0</span>
+            <span class="text-xs text-cyan-400 font-medium">conversations</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+            Unread messages: <span id="metric-inbox-unread" class="text-slate-200 font-medium">0</span>
+          </p>
+        </div>
+
+        <!-- Card 4: Persistent Session Status -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-5 border-l-4 border-l-purple-500">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase font-medium tracking-wider text-slate-400">Mingle2 Session</span>
+            <span class="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span id="session-status-badge" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300">
+                Checking...
+              </span>
+              <button onclick="checkAuthStatus()" title="Re-check login status" class="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition">
+                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+            <button onclick="document.getElementById('session-zip-input').click()" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 transition" title="Upload minglebot_session.zip directly to Render">
+              <i data-lucide="upload" class="w-3 h-3"></i>
+              <span>Upload Zip</span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-400 mt-2 truncate">
+            Profile: <span id="metric-account-name" class="text-purple-300 font-medium">Loading...</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Dashboard Main Row: Quick Tasks & Activity Feed -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- Quick Task Dispatcher (5 cols) -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="glass-panel rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-white/5">
+              <div class="flex items-center gap-2">
+                <i data-lucide="zap" class="w-5 h-5 text-pink-400"></i>
+                <h3 class="font-bold text-white text-base">Quick Action Dispatcher</h3>
+              </div>
+              <span class="text-xs text-slate-400 font-medium">Autonomous Execution</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button onclick="quickLaunchTask('AUTO_LIKE_BACK')" class="p-3.5 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/20 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-pink-400 font-bold text-sm">
+                  <i data-lucide="heart-handshake" class="w-4 h-4"></i>
+                  <span>Auto Like-Back</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Scan who liked you and schedule automated like-backs.</p>
+              </button>
+
+              <button onclick="quickLaunchTask('LIKE_ONLINE_USERS', { limit: 10 })" class="p-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <i data-lucide="radio" class="w-4 h-4"></i>
+                  <span>Like 10 Online</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Target active online members for instant matching.</p>
+              </button>
+
+              <button onclick="quickLaunchTask('AUTO_CHECK_INBOX')" class="p-3.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                  <i data-lucide="inbox" class="w-4 h-4"></i>
+                  <span>Check Mailbox</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Fetch new unread messages and conversation threads.</p>
+              </button>
+
+              <button onclick="triggerFullSync()" class="p-3.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-purple-400 font-bold text-sm">
+                  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                  <span>Full Platform Sync</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Synchronize Account, Mailbox, Matches, and Online.</p>
+              </button>
+
+              <button onclick="quickLaunchTask('BULK_SEARCH_AND_LIKE', { looking_for: 'f', age_from: 18, age_to: 25, profession: 'nurse', keywords: 'nurse' })" class="p-3.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-rose-300 font-bold text-sm">
+                  <span>🩺 Like Nurses (18-25)</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Search & like young nurses and healthcare professionals.</p>
+              </button>
+
+              <button onclick="quickLaunchTask('BULK_SEARCH_AND_LIKE', { looking_for: 'f', age_from: 18, age_to: 25, keywords: 'brown' })" class="p-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-left transition hover:scale-[1.02]">
+                <div class="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <span>👩🏽 Like Brown Ladies (18-25)</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Search & like young brown ladies and brunettes.</p>
+              </button>
+            </div>
+
+            <!-- Test Simulation Helper -->
+            <div class="pt-3 border-t border-white/5 flex items-center justify-between">
+              <span class="text-xs text-slate-400">Need to test queue countdowns?</span>
+              <button onclick="simulateIncomingLike()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-pink-300 border border-pink-500/20 transition flex items-center gap-1.5">
+                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+                <span>Simulate Incoming Like</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Running Tasks / Mini Feed (7 cols) -->
+        <div class="lg:col-span-7 space-y-4">
+          <div class="glass-panel rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-white/5">
+              <div class="flex items-center gap-2">
+                <i data-lucide="activity" class="w-5 h-5 text-indigo-400"></i>
+                <h3 class="font-bold text-white text-base">Active Automation Tasks</h3>
+              </div>
+              <div class="flex items-center gap-3">
+                <button onclick="clearAllTasks()" class="text-xs text-rose-400 hover:text-rose-300 font-medium transition" title="Clear all tasks from queue">
+                  <span>Reset Tasks</span>
+                </button>
+                <button onclick="switchTab('tasks')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium">
+                  <span>View Dispatcher</span>
+                  <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                </button>
+              </div>
+            </div>
+
+            <div id="dashboard-tasks-container" class="space-y-3">
+              <div class="text-center py-6 text-slate-500 text-xs">
+                No tasks currently executing. Click any quick action above to dispatch!
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 2: ACCOUNT -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-account" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-6 space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <i data-lucide="user-check" class="w-5 h-5 text-purple-400"></i>
+              <span>Mingle2 Profile & Account Sync</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Live profile stats, biography, avatar, and photos mirrored from Mingle2.</p>
+          </div>
+          <button onclick="syncAccount()" id="btn-sync-account" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 transition">
+            <i data-lucide="refresh-cw" class="w-4 h-4" id="account-sync-icon"></i>
+            <span>Sync Account Now</span>
+          </button>
+        </div>
+
+        <!-- Profile Presentation Card -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div class="md:col-span-4 flex flex-col items-center text-center p-6 rounded-2xl bg-slate-900/60 border border-white/5">
+            <div class="relative">
+              <img id="account-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=250" alt="Avatar" class="w-32 h-32 rounded-2xl object-cover border-2 border-purple-500/40 shadow-xl shadow-purple-500/10">
+              <span class="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-slate-900" title="Active"></span>
+            </div>
+            <h3 id="account-username" class="text-lg font-bold text-white mt-4">Syncing Profile...</h3>
+            <p id="account-location" class="text-xs text-slate-400 mt-0.5">Location loading...</p>
+            <div class="mt-4 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20" id="account-id-badge">
+              ID: my_account
+            </div>
+          </div>
+
+          <div class="md:col-span-8 space-y-4">
+            <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-2">
+              <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">Headline</span>
+              <p id="account-headline" class="text-sm font-medium text-slate-200">No headline synced yet.</p>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-2">
+              <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">About Me / Bio</span>
+              <p id="account-bio" class="text-sm text-slate-300 whitespace-pre-line leading-relaxed">Click "Sync Account Now" to pull your bio from Mingle2.</p>
+            </div>
+
+            <!-- Photos Gallery -->
+            <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-3">
+              <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">Profile Photos</span>
+              <div id="account-photos-gallery" class="flex flex-wrap gap-2.5">
+                <span class="text-xs text-slate-500">No photos synced yet.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 3: MAILBOX / INBOX -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-inbox" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5">
+        <div class="flex items-center justify-between pb-4 border-b border-white/5">
+          <div class="flex items-center gap-2">
+            <i data-lucide="inbox" class="w-5 h-5 text-cyan-400"></i>
+            <h2 class="text-lg font-bold text-white">Mingle2 Mailbox & Chat</h2>
+          </div>
+          <button onclick="syncInbox()" id="btn-sync-inbox" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="inbox-sync-icon"></i>
+            <span>Refresh Inbox</span>
+          </button>
+        </div>
+
+        <!-- Two-Pane Chat Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4 h-[650px]">
+          <!-- Left: Threads List (4 cols) -->
+          <div class="lg:col-span-4 rounded-2xl bg-slate-900/60 border border-white/5 flex flex-col overflow-hidden">
+            <div class="p-3 border-b border-white/5 flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Conversations</span>
+              <span id="threads-count-label" class="text-xs text-cyan-400 font-mono">0 threads</span>
+            </div>
+            <div id="threads-list" class="flex-1 overflow-y-auto divide-y divide-white/5">
+              <div class="p-8 text-center text-xs text-slate-500">
+                Click "Refresh Inbox" to load conversations from Mingle2.
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Active Chat View (8 cols) -->
+          <div class="lg:col-span-8 rounded-2xl bg-slate-900/60 border border-white/5 flex flex-col overflow-hidden">
+            <!-- Chat Header -->
+            <div id="chat-header" class="p-3.5 border-b border-white/5 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden border border-white/10" id="chat-active-avatar-wrap">
+                  <i data-lucide="user" class="w-5 h-5 text-slate-400"></i>
+                </div>
+                <div>
+                  <h4 id="chat-active-name" class="text-sm font-bold text-white">Select a conversation</h4>
+                  <p id="chat-active-status" class="text-[11px] text-slate-400">No active thread</p>
+                </div>
+              </div>
+              <button onclick="syncActiveThread()" id="btn-sync-thread" class="hidden p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition" title="Refresh messages">
+                <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <!-- Messages Stream -->
+            <div id="chat-messages-container" class="flex-1 p-4 overflow-y-auto space-y-3">
+              <div class="h-full flex flex-col items-center justify-center text-center text-xs text-slate-500">
+                <i data-lucide="message-circle" class="w-10 h-10 text-slate-700 mb-2"></i>
+                <span>Choose a conversation on the left to read messages and send direct replies.</span>
+              </div>
+            </div>
+
+            <!-- Send Input Form -->
+            <div class="p-3 border-t border-white/5">
+              <form id="chat-send-form" onsubmit="sendChatMessage(event)" class="flex items-center gap-2">
+                <input type="text" id="chat-input-text" placeholder="Type a direct reply..." class="flex-1 px-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition" disabled>
+                <button type="submit" id="chat-btn-send" class="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                  <span>Send</span>
+                  <i data-lucide="send" class="w-4 h-4"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 4: MUTUAL MATCHES & LIKES QUEUE -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-matches" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="heart" class="w-5 h-5 text-rose-400"></i>
+              <span>Mutual Matches & Interested Likers Queue</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Automated 5-minute delayed like-backs with anti-bot mouse curves & jitter.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="triggerScan()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="matches-scan-icon"></i>
+              <span>Scan Likers</span>
+            </button>
+            <button onclick="simulateIncomingLike()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>Simulate Liker</span>
+            </button>
+            <button onclick="clearSimulatedLikes()" title="Clear simulated/test entries from queue" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Clear Test Data</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter & Search Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5">
+            <button onclick="filterQueue('ALL')" class="queue-filter-btn active px-3 py-1 rounded-lg text-xs font-semibold bg-pink-500/20 text-pink-300 border border-pink-500/30" data-filter="ALL">All</button>
+            <button onclick="filterQueue('PENDING')" class="queue-filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="PENDING">Pending</button>
+            <button onclick="filterQueue('LIKED')" class="queue-filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="LIKED">Liked</button>
+            <button onclick="filterQueue('FAILED')" class="queue-filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-filter="FAILED">Failed</button>
+          </div>
+          <input type="text" id="queue-search" oninput="searchQueue(this.value)" placeholder="Search username or location..." class="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-white placeholder-slate-500 w-64 focus:outline-none focus:border-pink-500 transition">
+        </div>
+
+        <!-- Likers Queue Table -->
+        <div class="overflow-x-auto rounded-xl border border-white/5">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/80 text-slate-400 uppercase text-[11px] font-semibold border-b border-white/5">
+              <tr>
+                <th class="p-3">User Profile</th>
+                <th class="p-3">Detected At</th>
+                <th class="p-3">Scheduled Time</th>
+                <th class="p-3">Countdown / Progress</th>
+                <th class="p-3">Status</th>
+                <th class="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="queue-table-body" class="divide-y divide-white/5 bg-slate-900/40">
+              <tr>
+                <td colspan="6" class="p-8 text-center text-slate-500">
+                  Scanning for incoming likers... Click "Scan Likers" to search Mingle2.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 5: SEARCH (BASIC & ADVANCED) -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-search" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-5">
+        <div class="pb-3 border-b border-white/5">
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="search" class="w-5 h-5 text-amber-400"></i>
+            <span>Mingle2 Search (Basic & Advanced)</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Filter by gender, age bracket, country, distance, profession, and keywords.</p>
+        </div>
+
+        <!-- Target Preference Presets -->
+        <div class="p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-slate-900/60 border border-amber-500/30 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+              <span>Target Preference Presets (Nurses, Brown Ladies, 18-25)</span>
+            </span>
+            <span class="text-[10px] text-slate-400">1-Click Auto-Fill & Search</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="applyTargetPreset('nurse_young')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 transition flex items-center gap-1.5 shadow-md">
+              <span>🩺 Young Nurses (18-25)</span>
+            </button>
+            <button type="button" onclick="applyTargetPreset('brown_ladies')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 transition flex items-center gap-1.5 shadow-md">
+              <span>👩🏽 Brown Ladies (18-25)</span>
+            </button>
+            <button type="button" onclick="applyTargetPreset('young_ladies')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600/30 hover:bg-pink-600/50 text-pink-200 border border-pink-500/40 transition flex items-center gap-1.5 shadow-md">
+              <span>🌸 Young Ladies (18-25)</span>
+            </button>
+            <button type="button" onclick="applyTargetPreset('all_favorites')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 transition flex items-center gap-1.5 shadow-md">
+              <span>✨ Nurses & Brown Ladies (18-25)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search Form -->
+        <form id="search-form" onsubmit="executeSearch(event)" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Looking For</label>
+              <select id="search-looking-for" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400">
+                <option value="f" selected>Women (F)</option>
+                <option value="m">Men (M)</option>
+                <option value="any">Any Gender</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Age Min</label>
+              <input type="number" id="search-age-from" value="18" min="18" max="99" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Age Max</label>
+              <input type="number" id="search-age-to" value="25" min="18" max="99" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Country</label>
+              <select id="search-country" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400">
+                <option value="">Any Country</option>
+                <option value="US" selected>United States</option>
+                <option value="CA">Canada</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-amber-300 mb-1 flex items-center gap-1">
+                <i data-lucide="briefcase" class="w-3.5 h-3.5"></i>
+                <span>Profession</span>
+              </label>
+              <input type="text" id="search-profession" placeholder="e.g. Nurse, Teacher" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Location / City</label>
+              <input type="text" id="search-location" placeholder="e.g. New York, Miami" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
+            </div>
+          </div>
+
+          <!-- Secondary Row: Keywords & Deep Search Controls -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-slate-400 mb-1">General Keywords / Interests</label>
+              <input type="text" id="search-keywords" placeholder="e.g. music, travel, hiking" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div class="flex items-center gap-2 pt-4">
+              <input type="checkbox" id="search-deep-match" checked class="w-4 h-4 rounded text-amber-500 focus:ring-0">
+              <label for="search-deep-match" class="text-xs text-slate-300 select-none cursor-pointer">
+                Deep Taxonomy Ranking (RN, ICU, etc.)
+              </label>
+            </div>
+
+            <div class="flex items-end">
+              <button type="submit" id="btn-run-search" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-600/20">
+                <i data-lucide="search" class="w-4 h-4"></i>
+                <span>Execute Deep Search</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Popular Profession Quick Chips -->
+          <div class="flex flex-wrap items-center gap-1.5 pt-1">
+            <span class="text-[11px] text-slate-400 mr-1">Quick Select:</span>
+            <button type="button" onclick="setSearchProfession('Nurse')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Nurse (RN, LPN)</button>
+            <button type="button" onclick="setSearchProfession('Teacher')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Teacher / Educator</button>
+            <button type="button" onclick="setSearchProfession('Doctor')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Doctor / MD</button>
+            <button type="button" onclick="setSearchProfession('Software Engineer')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Engineer</button>
+            <button type="button" onclick="setSearchProfession('Accountant')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Accountant / CPA</button>
+            <button type="button" onclick="setSearchProfession('Lawyer')" class="px-2.5 py-1 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">Lawyer / Attorney</button>
+          </div>
+        </form>
+
+        <!-- Search Results Grid -->
+        <div class="pt-3 border-t border-white/5 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Search Results</span>
+            <span id="search-results-count" class="text-xs text-amber-400 font-mono">0 profiles</span>
+          </div>
+          <div id="search-results-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+            <div class="col-span-full py-12 text-center text-xs text-slate-500">
+              Execute a search above to discover profiles on Mingle2.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 6: WHO'S ONLINE -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-online" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="radio" class="w-5 h-5 text-emerald-400"></i>
+              <span>Who's Online Now on Mingle2</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Live active users on Mingle2 ready for instant interaction.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Filter Pills -->
+            <div class="flex items-center bg-slate-900/90 rounded-xl p-1 border border-white/10">
+              <button onclick="filterOnlineGrid('ALL')" class="online-filter-btn active px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition" data-filter="ALL">All Online</button>
+              <button onclick="filterOnlineGrid('FEMALES_18_25')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="FEMALES_18_25">🌸 Females (18-25)</button>
+              <button onclick="filterOnlineGrid('FEMALES')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="FEMALES">👩 Females</button>
+              <button onclick="filterOnlineGrid('NURSES')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="NURSES">🩺 Nurses</button>
+            </div>
+
+            <button onclick="syncOnlineUsers()" id="btn-sync-online" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="online-sync-icon"></i>
+              <span>Refresh Online</span>
+            </button>
+            <button onclick="likeFilteredOnlineUsers()" id="btn-like-filtered-online" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 transition flex items-center gap-1.5" title="Like all currently visible filtered online ladies">
+              <i data-lucide="heart" class="w-3.5 h-3.5"></i>
+              <span>Like Filtered Ladies</span>
+            </button>
+            <button onclick="quickLaunchTask('LIKE_ONLINE_USERS', { limit: 10 })" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span>Auto-Like 10 Online</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="online-users-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+          <div class="col-span-full py-12 text-center text-xs text-slate-500">
+            Click "Refresh Online Users" to scan currently active Mingle2 members.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 7: TASK AUTOMATION HUB (DISPATCHER) -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-tasks" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="list-todo" class="w-5 h-5 text-indigo-400"></i>
+              <span>Task Automation Hub & Dispatcher</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Assign, schedule, monitor, and cancel autonomous background tasks.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="clearCompletedTasks()" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Clear Completed</span>
+            </button>
+            <button onclick="clearAllTasks()" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1" title="Cancel and delete all tasks including stuck ones">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              <span>Reset All Tasks</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Task Creator Form -->
+        <div class="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-300">Dispatch New Automation Task</h3>
+          <form id="create-task-form" onsubmit="createCustomTask(event)" class="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Task Type</label>
+              <select id="task-type-select" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-400">
+                <option value="AUTO_LIKE_BACK">Auto Like-Back (Scan likers & schedule)</option>
+                <option value="LIKE_ONLINE_USERS">Like Online Users (Autonomous likes)</option>
+                <option value="BULK_SEARCH_AND_LIKE">Bulk Search & Like (Target filters)</option>
+                <option value="AUTO_CHECK_INBOX">Auto-Check Mailbox (Sync chats)</option>
+                <option value="SYNC_FULL_ACCOUNT">Full Platform Sync (100% sync)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Target Limit / Count</label>
+              <input type="number" id="task-limit-input" value="10" min="1" max="50" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-400">
+            </div>
+
+            <div class="flex items-end">
+              <button type="submit" class="w-full py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>Queue Task</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Tasks Table -->
+        <div class="overflow-x-auto rounded-xl border border-white/5">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/80 text-slate-400 uppercase text-[11px] font-semibold border-b border-white/5">
+              <tr>
+                <th class="p-3">Task ID</th>
+                <th class="p-3">Type</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">Progress</th>
+                <th class="p-3">Current Step / Result</th>
+                <th class="p-3">Created</th>
+                <th class="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="tasks-table-body" class="divide-y divide-white/5 bg-slate-900/40">
+              <tr>
+                <td colspan="7" class="p-8 text-center text-slate-500">
+                  No automation tasks queued yet.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 7: DIAGNOSTICS & SUBSYSTEM HEALTH -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-diagnostics" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-5">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/5">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="activity" class="w-5 h-5 text-emerald-400"></i>
+              <span>Subsystem Health & Live Diagnostics</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Real-time health telemetry across session, identity verifier, queue state machine, and search engine.</p>
+          </div>
+          <button onclick="runDiagnosticsCheck()" id="btn-run-diag" class="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-emerald-500/10">
+            <i data-lucide="refresh-cw" class="w-4 h-4" id="diag-refresh-icon"></i>
+            <span>Run Health Check</span>
+          </button>
+        <!-- 9 Authority System Verification Checklist Items -->
+        <div class="p-5 rounded-2xl bg-slate-900/90 border border-emerald-500/20 space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-white/5">
+            <div class="flex items-center gap-2.5">
+              <span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+              </span>
+              <div>
+                <h3 class="text-sm font-bold text-white">Platform Health & Verification Checklist</h3>
+                <p class="text-[11px] text-slate-400">Authoritative status indicators for live Mingle2 automation and browser integration.</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono text-emerald-400 font-bold" id="checklist-summary-badge">Verification Suite Ready</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" id="diagnostics-checklist-grid">
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Browser launched:</span>
+              <span id="diag-check-browser-launched" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">NO</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Mingle2 reachable:</span>
+              <span id="diag-check-reachable" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">YES</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Login detected:</span>
+              <span id="diag-check-login-detected" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">NO</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Session verified:</span>
+              <span id="diag-check-session-verified" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">NO</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Profile data accessible:</span>
+              <span id="diag-check-profile-data" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">NO</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Who-Liked-Me data accessible:</span>
+              <span id="diag-check-who-liked-me" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">NO</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Profile identity verification:</span>
+              <span id="diag-check-identity-verif" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">PASS</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Like-back verification:</span>
+              <span id="diag-check-like-verif" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">PASS</span>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-white/5">
+              <span class="text-xs text-slate-300 font-medium">Match verification:</span>
+              <span id="diag-check-match-verif" class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">PASS</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 Telemetry Status Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="diag-cards-container">
+          <!-- Card 1: Platform Session -->
+          <div class="diag-card p-4 rounded-xl bg-slate-900/60 border border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Platform Session</span>
+              <i data-lucide="globe" class="w-4 h-4 text-pink-400"></i>
+            </div>
+            <div class="text-base font-bold text-white" id="diag-session-status">Loading...</div>
+            <div class="text-[11px] text-slate-400" id="diag-session-details">Checking authentication...</div>
+          </div>
+
+          <!-- Card 2: 5-Minute Queue -->
+          <div class="diag-card p-4 rounded-xl bg-slate-900/60 border border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Queue State Machine</span>
+              <i data-lucide="timer" class="w-4 h-4 text-purple-400"></i>
+            </div>
+            <div class="text-base font-bold text-white" id="diag-queue-status">Loading...</div>
+            <div class="text-[11px] text-slate-400" id="diag-queue-details">Persistent timers intact</div>
+          </div>
+
+          <!-- Card 3: Identity Verifier -->
+          <div class="diag-card p-4 rounded-xl bg-slate-900/60 border border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Identity Verifier</span>
+              <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <div class="text-base font-bold text-emerald-300" id="diag-verifier-status">Active (Canonical Guard)</div>
+            <div class="text-[11px] text-slate-400" id="diag-verifier-details">Paywalled previews isolated</div>
+          </div>
+
+          <!-- Card 4: Search Engine -->
+          <div class="diag-card p-4 rounded-xl bg-slate-900/60 border border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Search Taxonomy</span>
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+            </div>
+            <div class="text-base font-bold text-white" id="diag-search-status">Loaded</div>
+            <div class="text-[11px] text-slate-400" id="diag-search-details">Semantic profession ranking</div>
+          </div>
+        </div>
+
+        <!-- Interactive Profile Identity Pre-Flight Tester -->
+        <div class="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="user-check" class="w-4 h-4 text-pink-400"></i>
+            <h3 class="text-sm font-bold text-white">Pre-Flight Profile Identity Verification Tester</h3>
+          </div>
+          <p class="text-xs text-slate-400">Verify a Mingle2 profile ID before queueing to ensure canonical URL, active status, and prevent the wrong-profile bug.</p>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="verify-test-input" placeholder="Enter Mingle2 member ID (e.g. 10570551)" class="flex-1 px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500">
+            <button onclick="testVerifyProfile()" id="btn-test-verify" class="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-pink-600/20">
+              <i data-lucide="search" class="w-4 h-4"></i>
+              <span>Verify On Platform</span>
+            </button>
+          </div>
+          <div id="verify-test-result" class="hidden p-3 rounded-xl text-xs space-y-1"></div>
+        </div>
+
+        <!-- Raw Diagnostics Payload Display -->
+        <div class="space-y-2">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Diagnostics Telemetry Data</span>
+          <pre id="diag-json-output" class="font-mono-code text-[11px] bg-slate-950 p-4 rounded-xl border border-white/5 text-slate-300 max-h-64 overflow-y-auto">Click "Run Health Check" to fetch subsystem status...</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- TAB 8: LIVE CONSOLE -->
+    <!-- ==================================================================== -->
+    <section id="tab-content-console" class="hidden space-y-5">
+      <div class="glass-panel rounded-2xl p-5 space-y-3">
+        <div class="flex items-center justify-between pb-3 border-b border-white/5">
+          <div class="flex items-center gap-2">
+            <i data-lucide="terminal" class="w-5 h-5 text-emerald-400"></i>
+            <h2 class="text-base font-bold text-white">Live Activity Stream</h2>
+            <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-running"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="clearConsoleLogs()" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+              Clear Logs
+            </button>
+          </div>
+        </div>
+
+        <div id="console-logs" class="font-mono-code text-xs bg-slate-950/90 rounded-xl p-4 h-[550px] overflow-y-auto space-y-1.5 border border-white/5 text-slate-300">
+          <div class="text-slate-500">[SYSTEM] Connecting to live WebSocket log stream...</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Settings Modal Dialog -->
+  <div id="settings-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-panel rounded-2xl p-6 w-full max-w-md space-y-5 border border-white/15 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-white/5">
+        <div class="flex items-center gap-2">
+          <i data-lucide="sliders" class="w-5 h-5 text-pink-400"></i>
+          <h3 class="font-bold text-white text-base">Automation Settings</h3>
+        </div>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Like Delay -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300 font-medium">Like Delay</span>
+            <span class="text-pink-400 font-bold font-mono"><span id="label-delay">5</span> minutes</span>
+          </div>
+          <input type="range" id="input-delay" min="1" max="60" value="5" class="w-full" oninput="document.getElementById('label-delay').innerText = this.value">
+        </div>
+
+        <!-- Scan Interval -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300 font-medium">Scan Frequency</span>
+            <span class="text-purple-400 font-bold font-mono"><span id="label-scan">60</span> seconds</span>
+          </div>
+          <input type="range" id="input-scan" min="15" max="600" step="15" value="60" class="w-full" oninput="document.getElementById('label-scan').innerText = this.value">
+        </div>
+
+        <!-- Human Jitter -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300 font-medium">Human Delay Jitter</span>
+            <span class="text-cyan-400 font-bold font-mono">±<span id="label-jitter">15</span> seconds</span>
+          </div>
+          <input type="range" id="input-jitter" min="0" max="60" value="15" class="w-full" oninput="document.getElementById('label-jitter').innerText = this.value">
+        </div>
+
+        <!-- Headless Mode -->
+        <div class="flex items-center justify-between pt-2 border-t border-white/5">
+          <span class="text-xs text-slate-300 font-medium">Headless Background Engine</span>
+          <input type="checkbox" id="input-headless" class="w-4 h-4 rounded text-pink-500 focus:ring-0">
+        </div>
+
+        <!-- Safe Test Mode -->
+        <div class="flex items-center justify-between pt-2 border-t border-white/5">
+          <div>
+            <span class="text-xs text-amber-300 font-medium">Safe Test Mode</span>
+            <p class="text-[11px] text-slate-400">Simulate likes without external mutations</p>
+          </div>
+          <input type="checkbox" id="input-test-mode" class="w-4 h-4 rounded text-amber-500 focus:ring-0">
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-white/5">
+        <button onclick="closeSettingsModal()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white">Cancel</button>
+        <button onclick="saveSettings()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Application Logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>

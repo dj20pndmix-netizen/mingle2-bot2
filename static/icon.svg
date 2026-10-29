@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="50%" stop-color="#ec4899" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- App Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)" stroke="#ec4899" stroke-width="6" stroke-opacity="0.3" />
+  
+  <!-- Subtle Circuit / Star accents -->
+  <circle cx="120" cy="120" r="4" fill="#f43f5e" opacity="0.6" />
+  <circle cx="390" cy="100" r="3" fill="#8b5cf6" opacity="0.6" />
+  <circle cx="420" cy="380" r="5" fill="#ec4899" opacity="0.5" />
+  <circle cx="90" cy="390" r="3" fill="#a855f7" opacity="0.6" />
+  
+  <!-- Glowing Heart Logo -->
+  <g filter="url(#glow)">
+    <path d="M256 420 C 256 420, 100 310, 100 200 C 100 135, 150 95, 210 95 C 235 95, 250 110, 256 120 C 262 110, 277 95, 302 95 C 362 95, 412 135, 412 200 C 412 310, 256 420, 256 420 Z" fill="url(#heartGrad)" />
+  </g>
+  
+  <!-- Center Robot / Automation Lightning Bolt -->
+  <path d="M270 170 L220 255 L260 255 L242 335 L292 250 L252 250 Z" fill="#ffffff" opacity="0.95" />
+</svg>

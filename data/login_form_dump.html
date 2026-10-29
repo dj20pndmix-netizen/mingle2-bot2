@@ -1,0 +1,26 @@
+<form class="form-mingle" id="login-form" action="https://mingle2.com/user/verify_login" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="✓"><input type="hidden" name="authenticity_token" value="0ZKm8BqwHnHoKvqc4ao+OHdYtPA2ff6m8TOc61+Ynm+73ayTb+b7CbKG6N7bDAqBQPffOzvIbIfcv1Gt9+tKTA==">
+        
+        <div class="form-group">
+          <label for="login">Email</label>
+          <input type="text" name="login" id="login" size="40" maxlength="100" class="form-control" placeholder="Your Email" required="required" aria-label="Your email">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" name="password" id="password" value="" size="40" maxlength="100" class="form-control" placeholder="Password" required="required" aria-label="Your password" autocomplete="off">
+        </div>
+        <div class="form-group mt-4">
+          <div class="row">
+            <div class="col-12">
+              <a class="pull-right" href="https://mingle2.com/user/forgot_password">Forgot Password?</a>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="text-center mt-4">
+          <button data-recaptcha-action="login" class="form-with-recaptcha-action btn btn-mingle px-5 w-100 font-weight-bold" type="submit">LOGIN NOW</button>
+        </div>
+        <div class="text-center mt-4">
+          <span>Don't have account?</span> <a href="/user/step1">Sign up</a>
+        </div>
+</form>

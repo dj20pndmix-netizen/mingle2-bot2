@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# Playwright browser downloads / caches
+browser_data/Default/Cache/
+browser_data/Default/Code Cache/
+browser_data/Default/GPUCache/
+
+# Logs & temp
+*.log
+data/logs.log
+.DS_Store
+Thumbs.db

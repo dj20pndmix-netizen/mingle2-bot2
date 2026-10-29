@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  minglebot:
+    build: .
+    container_name: minglebot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HEADLESS_MODE=true
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./data:/app/data
+      - ./browser_data:/app/browser_data
+    shm_size: '1gb'
