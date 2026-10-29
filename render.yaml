@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: minglebot-command-center
+    name: minglebot
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
     healthCheckPath: /api/status
     envVars:
@@ -10,9 +10,3 @@ services:
         value: "true"
       - key: HOST
         value: "0.0.0.0"
-      - key: PORT
-        value: "8000"
-    disk:
-      name: minglebot-data
-      mountPath: /app/data
-      sizeGB: 1

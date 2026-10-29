@@ -70,19 +70,22 @@ def main():
     setup_logging()
     print_banner()
 
-    # Optional auto-launch of dashboard in default browser
+    # Optional auto-launch of dashboard in default browser (only in desktop non-headless mode)
     try:
-        if os.environ.get("OPEN_BROWSER", "1") == "1":
+        if not settings.headless_mode and os.environ.get("OPEN_BROWSER", "1") == "1":
             dashboard_url = f"http://{settings.host}:{settings.port}"
             webbrowser.open(dashboard_url)
     except Exception:
         pass
 
-    # Start FastAPI server
+    # Start FastAPI server on dynamic Render/host port
+    host = os.getenv("HOST", settings.host)
+    port = int(os.getenv("PORT", settings.port))
+
     uvicorn.run(
         "src.server:app",
-        host=settings.host,
-        port=settings.port,
+        host=host,
+        port=port,
         reload=False,
         log_level="info",
     )
