@@ -512,19 +512,50 @@ class Mingle2BotEngine:
                 await asyncio.sleep(4.5)
                 await dismiss_page_overlays(page)
 
-                # Check for explicit error banners on page
-                error_el = page.locator(".alert-danger, .error, .flash_error, .notice-error, .invalid-feedback").first
+                # Check for explicit error banners or alerts on page
+                error_el = page.locator(
+                    ".alert, .alert-warning, .alert-danger, .error, .flash_error, .notice-error, .invalid-feedback, "
+                    "div:text-matches('incorrect|invalid|wrong|error|captcha', 'i')"
+                ).first
                 if await error_el.count() > 0:
                     err_text = await error_el.inner_text()
+                    clean_err = err_text.strip().replace("\n", " ")
+                    if clean_err:
+                        await page.close()
+                        await self.set_session_state(SessionState.LOGIN_REQUIRED)
+                        return {"status": "error", "message": f"Mingle2: {clean_err}"}
+
+                # Check if current URL transitioned to an authenticated section
+                after_url = strip_google_vignette(page.url.lower())
+                if "/user/login" not in after_url and "/verify_login" not in after_url and "/sign_in" not in after_url and "step1" not in after_url:
+                    storage_path = settings.data_dir / "storage_state.json"
+                    try:
+                        await context.storage_state(path=str(storage_path))
+                    except Exception:
+                        pass
+
                     await page.close()
-                    await self.set_session_state(SessionState.LOGIN_REQUIRED)
-                    return {"status": "error", "message": f"Mingle2 login error: {err_text.strip()}"}
+                    await self.set_session_state(SessionState.CONNECTED)
+                    await self._log("SUCCESS", f"Direct login verified successfully for '{login}'!")
+
+                    try:
+                        from src.session_manager import export_session_archive
+                        export_session_archive()
+                    except Exception:
+                        pass
+
+                    try:
+                        await self.sync_account_profile()
+                    except Exception:
+                        pass
+
+                    return {"status": "success", "message": "Successfully logged into Mingle2!"}
 
                 # Navigate to mutual match to confirm active authenticated session
                 try:
                     await page.goto("https://mingle2.com/mutual_match/who_is_interested_in_me", wait_until="domcontentloaded", timeout=25000)
                     test_url = strip_google_vignette(page.url.lower())
-                    if "/user/login" not in test_url and "/sign_in" not in test_url and "step1" not in test_url:
+                    if "/user/login" not in test_url and "/verify_login" not in test_url and "/sign_in" not in test_url and "step1" not in test_url:
                         storage_path = settings.data_dir / "storage_state.json"
                         try:
                             await context.storage_state(path=str(storage_path))
@@ -554,7 +585,7 @@ class Mingle2BotEngine:
                 await self.set_session_state(SessionState.LOGIN_REQUIRED)
                 return {
                     "status": "error",
-                    "message": "Form was submitted but session could not be verified (reCAPTCHA challenge may have been triggered). Please use 'Upload Session Zip' from your PC."
+                    "message": "Login was rejected by Mingle2 or reCAPTCHA challenge was triggered. Please use 'Upload Session Zip' (select minglebot_session.zip from your PC) to instantly authenticate."
                 }
 
             except Exception as e:

@@ -295,8 +295,9 @@ function updateSessionStatus(sessionState, connectionStatus) {
   const overviewBrowser = document.getElementById('overview-browser-status');
 
   const stateStr = sessionState || 'LOGIN_REQUIRED';
+  const isAuth = stateStr === 'CONNECTED' || stateStr === 'SESSION_VERIFIED' || stateStr === 'LOGGED_IN';
   const connStr = connectionStatus || (
-    stateStr === 'CONNECTED' || stateStr === 'SESSION_VERIFIED' ? 'CONNECTED' :
+    isAuth ? 'CONNECTED' :
     stateStr === 'SESSION_EXPIRED' ? 'SESSION EXPIRED' : 'LOGIN REQUIRED'
   );
 
@@ -304,23 +305,23 @@ function updateSessionStatus(sessionState, connectionStatus) {
 
   if (dashBadge) {
     dashBadge.innerText = connStr;
-    if (connStr === 'CONNECTED') {
+    if (connStr === 'CONNECTED' || isAuth) {
       dashBadge.className = 'px-3 py-1 rounded-xl text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
       if (dashInstructions) dashInstructions.innerText = 'Connected and authenticated with Mingle2. Ready for automated operations.';
     } else if (connStr === 'SESSION EXPIRED') {
       dashBadge.className = 'px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
-      if (dashInstructions) dashInstructions.innerText = 'Session expired — login required. Click "Open Browser for Login" to reconnect.';
+      if (dashInstructions) dashInstructions.innerText = 'Session expired — login required. Click "Upload Session Zip" or "Sign In with Email" to reconnect.';
     } else if (stateStr === 'OPENING_BROWSER' || stateStr === 'WAITING_FOR_LOGIN') {
       dashBadge.className = 'px-3 py-1 rounded-xl text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse';
-      if (dashInstructions) dashInstructions.innerText = stateStr === 'OPENING_BROWSER' ? 'Launching Chromium browser...' : 'Complete sign-in in the opened Mingle2 browser window...';
+      if (dashInstructions) dashInstructions.innerText = stateStr === 'OPENING_BROWSER' ? 'Connecting to Mingle2...' : 'Authenticating Mingle2 session...';
     } else {
       dashBadge.className = 'px-3 py-1 rounded-xl text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30';
-      if (dashInstructions) dashInstructions.innerText = 'Click "Open Browser for Login" to launch visible Chromium and sign in securely.';
+      if (dashInstructions) dashInstructions.innerText = 'Cloud Mode: Click "Upload Session Zip" or "Sign In with Email" to authenticate your Mingle2 account.';
     }
   }
 
   if (overviewSession) {
-    if (connStr === 'CONNECTED' || stateStr === 'SESSION_VERIFIED') {
+    if (connStr === 'CONNECTED' || isAuth) {
       overviewSession.innerText = 'VERIFIED';
       overviewSession.className = 'text-xs font-bold text-emerald-400 block';
     } else {
@@ -330,7 +331,7 @@ function updateSessionStatus(sessionState, connectionStatus) {
   }
 
   if (badge) {
-    if (connStr === 'CONNECTED') {
+    if (connStr === 'CONNECTED' || isAuth) {
       badge.innerText = 'CONNECTED';
       badge.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
     } else if (connStr === 'SESSION EXPIRED') {
@@ -533,6 +534,8 @@ async function verifySession() {
   }
 }
 
+const loadDashboardStatus = refreshAll;
+
 async function stopBot() {
   try {
     const res = await fetch('/api/bot/stop', { method: 'POST' });
@@ -556,6 +559,8 @@ async function refreshAll() {
     if (icon) setTimeout(() => icon.classList.remove('animate-spin'), 1200);
   }
 }
+
+const loadDashboardStatus = refreshAll;
 
 async function runDiagnosticsCheck() {
   const icon = document.getElementById('diag-refresh-icon');
@@ -632,6 +637,8 @@ async function runDiagnosticsCheck() {
   }
 }
 
+const loadDashboardStatus = refreshAll;
+
 async function testVerifyProfile() {
   const input = document.getElementById('verify-test-input');
   const resultDiv = document.getElementById('verify-test-result');
@@ -684,12 +691,13 @@ async function uploadSessionZip(event) {
 
     if (res.ok && data.is_logged_in) {
       showToast(data.message || 'Session verified! Bot is now AUTHENTICATED.', 'success', 6000);
-      updateSessionStatus('LOGGED_IN');
+      updateSessionStatus('CONNECTED', 'CONNECTED');
       if (data.account) renderAccount(data.account);
-      loadDashboardStatus();
+      await refreshAll();
     } else {
       showToast(data.message || 'Upload complete, but cookies appear expired.', 'warning', 6000);
-      updateSessionStatus('LOGGED_OUT');
+      updateSessionStatus('SESSION_EXPIRED', 'SESSION EXPIRED');
+      await refreshAll();
     }
   } catch (e) {
     showToast('Failed to upload session archive: ' + e.message, 'error');
@@ -1703,7 +1711,7 @@ async function submitCredentialsLogin(event) {
       }
       setTimeout(() => {
         closeCredentialsModal();
-        loadDashboardStatus();
+        refreshAll();
       }, 1200);
     } else {
       showToast(data.message || 'Login failed.', 'error', 8000);

@@ -93,6 +93,26 @@ async def lifespan(app: FastAPI):
     await database.add_log("INFO", "FastAPI Command Center server initialized.")
     # Automatically start automation loops and task worker
     await scheduler.start()
+
+    # Auto-verify session on startup in background if storage_state or session archive exists
+    async def _auto_verify_on_startup():
+        await asyncio.sleep(1.5)
+        storage_file = settings.data_dir / "storage_state.json"
+        if storage_file.exists() or (settings.browser_data_dir.exists() and any(settings.browser_data_dir.iterdir())):
+            try:
+                is_valid = await scheduler.engine.check_login_status()
+                if is_valid:
+                    await database.add_log("SUCCESS", "Startup verification: Authenticated Mingle2 session is ACTIVE and CONNECTED!")
+                    try:
+                        await scheduler.engine.sync_account_profile()
+                    except Exception:
+                        pass
+                else:
+                    await database.add_log("INFO", "Startup verification: No active session detected. Authentication required.")
+            except Exception as ex:
+                logger.debug(f"Startup session check error: {ex}")
+
+    asyncio.create_task(_auto_verify_on_startup())
     yield
     # Shutdown
     await scheduler.stop()
