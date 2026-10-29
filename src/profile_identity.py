@@ -4,12 +4,14 @@ Provides normalized profile identity models, URL canonicalization,
 and strict pre-action identity verification to prevent mismatched actions.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger("mingle2.profile_identity")
