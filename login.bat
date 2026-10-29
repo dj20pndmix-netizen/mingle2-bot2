@@ -1,10 +1,9 @@
 @echo off
-title Mingle2 Login Helper
+title Mingle2 One-Click Login & Auto-Sync
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kill_playwright.ps1" >nul 2>&1
-if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" login.py
-) else (
-    python login.py
-)
+echo =========================================================
+echo    Mingle2 One-Click Interactive Login ^& Auto-Sync
+echo =========================================================
+echo Launching visible browser on your PC screen...
+python login_and_sync.py
 pause
