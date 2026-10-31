@@ -49,17 +49,19 @@ def setup_logging():
 
 
 def print_banner():
+    display_host = "localhost" if settings.host in ("0.0.0.0", "::", "") else settings.host
     banner = f"""
 ========================================================================
              Mingle2 "Like-Back" Automation Bot & Web UI               
 ========================================================================
- [•] Web Dashboard:    http://{settings.host}:{settings.port}
+ [•] Web Dashboard:    http://{display_host}:{settings.port}
+ [•] Local Loopback:   http://127.0.0.1:{settings.port}
  [•] SQLite Database:  {settings.db_path}
  [•] Session Storage:  {settings.browser_data_dir}
  [•] Like-Back Delay:  {settings.like_delay_minutes} minutes (with randomized jitter)
  [•] Headless Mode:    {settings.headless_mode}
 ========================================================================
-Tip: On first launch, click 'Open Browser for Login' in the Dashboard
+Tip: On first launch, click 'Sign In to Mingle2' in the Dashboard
      to authenticate and solve Cloudflare/CAPTCHAs securely.
 ========================================================================
 """
@@ -70,17 +72,19 @@ def main():
     setup_logging()
     print_banner()
 
-    # Optional auto-launch of dashboard in default browser (only in desktop non-headless mode)
+    host = os.getenv("HOST", settings.host)
+    port = int(os.getenv("PORT", settings.port))
+    display_host = "localhost" if host in ("0.0.0.0", "::", "") else host
+
+    # Auto-launch of dashboard in default browser (only in desktop non-headless mode)
     try:
         if not settings.headless_mode and os.environ.get("OPEN_BROWSER", "1") == "1":
-            dashboard_url = f"http://{settings.host}:{settings.port}"
+            dashboard_url = f"http://{display_host}:{port}"
             webbrowser.open(dashboard_url)
     except Exception:
         pass
 
     # Start FastAPI server on dynamic Render/host port
-    host = os.getenv("HOST", settings.host)
-    port = int(os.getenv("PORT", settings.port))
     logging.info(f"Binding MingleBot web server to {host}:{port} (Render PORT={os.getenv('PORT')})")
 
     uvicorn.run(
