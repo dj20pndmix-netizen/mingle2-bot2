@@ -239,6 +239,9 @@ async def init_db() -> None:
             );
         """)
 
+        # 12. Reset interrupted/stale executing items and running tasks from prior runs
+        await db.execute("UPDATE likes_queue SET status = 'WAITING' WHERE status IN ('EXECUTING', 'VERIFYING')")
+        await db.execute("UPDATE tasks_queue SET status = 'CANCELLED', error_message = 'Interrupted by server restart' WHERE status = 'RUNNING'")
         await db.commit()
 
 

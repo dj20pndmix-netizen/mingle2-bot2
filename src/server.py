@@ -639,10 +639,13 @@ async def clear_simulated_items():
     return {"status": "success", "message": f"Cleared {cleared} simulated record(s)", "cleared": cleared}
 
 
+@app.post("/api/queue/simulate")
 @app.post("/api/queue/simulate-liker")
-async def simulate_liker(req: SimulateLikerRequest):
+async def simulate_liker(req: Optional[SimulateLikerRequest] = None):
     """Simulate an incoming like for testing reactive features."""
     import random
+    if req is None or not req.username:
+        req = SimulateLikerRequest(username=f"Jessica_R_{random.randint(100, 999)}", age_location="24, Miami, FL")
     sim_id = f"sim_{random.randint(10000, 99999)}"
     now = datetime.now(timezone.utc)
     delay_secs = settings.like_delay_minutes * 60

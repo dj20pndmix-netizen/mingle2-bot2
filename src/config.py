@@ -8,7 +8,7 @@ class Settings(BaseModel):
     base_dir: Path = Path(__file__).resolve().parent.parent
     data_dir: Path = base_dir / "data"
     browser_data_dir: Path = base_dir / "browser_data"
-    db_path: Path = data_dir / "queue.db"
+    db_path: Path = Field(default_factory=lambda: Path(os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "queue.db"))))
     log_path: Path = data_dir / "logs.log"
 
     # Automation parameters

@@ -25,9 +25,12 @@ async def run_test():
         s.bind(('127.0.0.1', 0))
         test_port = s.getsockname()[1]
 
+    import tempfile
+    test_db = Path(tempfile.gettempdir()) / f"test_queue_{test_port}.db"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(BASE_DIR)
     env["TEST_MODE"] = "true"
+    env["DB_PATH"] = str(test_db)
     python_exe = str(venv_python) if venv_python.exists() else sys.executable
     proc = subprocess.Popen(
         [python_exe, "-m", "uvicorn", "src.server:app", "--host", "127.0.0.1", "--port", str(test_port), "--log-level", "warning"],
@@ -39,7 +42,7 @@ async def run_test():
     server_ready = False
     for _ in range(30):
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/status", timeout=1) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/healthz", timeout=1) as resp:
                 if resp.status == 200:
                     server_ready = True
                     break
@@ -58,7 +61,7 @@ async def run_test():
         try:
             # 2. Navigate to Dashboard
             print("[2/9] Navigating to Command Center...", flush=True)
-            await page.goto(f"http://127.0.0.1:{test_port}", wait_until="domcontentloaded", timeout=30000)
+            await page.goto(f"http://127.0.0.1:{test_port}", wait_until="commit", timeout=15000)
             await page.wait_for_selector("#tab-btn-dashboard", timeout=20000)
             title = await page.title()
             print(f"      Page title: '{title}'", flush=True)
