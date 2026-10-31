@@ -96,10 +96,27 @@ class BotScheduler:
         """Bypass the 5-minute timer and like a user immediately."""
         user = await database.get_like_by_user_id(user_id)
         if not user:
-            return {"status": "not_found", "message": "User not found in queue."}
+            # Check cached online or search users
+            cached_online = await database.get_cached_search_results("ONLINE")
+            found = next((u for u in cached_online if str(u.get("user_id")) == str(user_id)), None)
+            if not found:
+                cached_search = await database.get_cached_search_results("SEARCH")
+                found = next((u for u in cached_search if str(u.get("user_id") or u.get("platform_profile_id")) == str(user_id)), None)
+
+            now = datetime.now(timezone.utc)
+            uname = str(found.get("username") or found.get("display_name", f"User {user_id}")) if found else f"User {user_id}"
+            user = await database.add_or_get_liker(
+                user_id=str(user_id),
+                username=uname,
+                profile_url=found.get("profile_url") or f"https://mingle2.com/users/view/{user_id}",
+                avatar_img_url=found.get("avatar_url") or found.get("photo_reference") or "",
+                age_location=found.get("age_location") or "",
+                detected_at=now,
+                scheduled_like_at=now,
+            )
 
         if user.get("status") in ("COMPLETED", "LIKED"):
-            return {"status": "already_liked", "message": "User has already been liked back."}
+            return {"status": "already_liked", "message": f"{user['username']} has already been liked."}
 
         await self._on_engine_log("INFO", f"Triggering immediate like for {user['username']}...")
         asyncio.create_task(self._execute_single_like(user))

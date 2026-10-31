@@ -1455,6 +1455,104 @@ class Mingle2BotEngine:
                     pass
                 return False, f"Verification failed: {e}", None
 
+    async def rate_user_direct(self, user_id: str, username: str = "User") -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Directly likes a user on Mingle2 via the official POST /mutual_match/rate_only endpoint.
+        Returns (success: bool, message: str, details: dict)
+        """
+        clean_uid = str(user_id).strip()
+        if not clean_uid:
+            return False, "Invalid user ID", {}
+
+        if settings.test_mode or clean_uid.startswith("sim_"):
+            await self._log("INFO", f"[TEST_MODE] Simulating direct like for '{username}' (ID: {clean_uid})...")
+            await asyncio.sleep(0.8)
+            return True, f"[TEST_MODE] Simulated direct like for '{username}'", {"success": True, "is_mutual": False}
+
+        async with self._lock:
+            await self._log("INFO", f"Sending direct Like to Mingle2 for '{username}' (ID: {clean_uid})...")
+            context = await self.get_context()
+            page = await context.new_page()
+
+            try:
+                # Use online search page to ensure active session and fresh CSRF token
+                await page.goto("https://mingle2.com/search/whos_online", wait_until="domcontentloaded", timeout=25000)
+                await asyncio.sleep(1.0)
+                await dismiss_page_overlays(page)
+
+                current_url = strip_google_vignette(page.url.lower())
+                if "/user/login" in current_url:
+                    self.session_status = "LOGGED_OUT"
+                    await page.close()
+                    return False, "Not authenticated on Mingle2", {"success": False}
+
+                # Execute rate_only POST
+                res = await page.evaluate(r"""async (uid) => {
+                    try {
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                        const resp = await fetch('https://mingle2.com/mutual_match/rate_only', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                'X-CSRF-Token': token || '',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: `id=${uid}&rating=Y`
+                        });
+                        const data = await resp.json();
+                        return { status: resp.status, data: data };
+                    } catch (e) {
+                        return { status: 0, error: e.toString() };
+                    }
+                }""", clean_uid)
+
+                await page.close()
+
+                status = res.get("status", 0)
+                data = res.get("data", {})
+                is_success = (status == 200 and data.get("success", False))
+                is_mutual = bool(data.get("is_mutual", False))
+                conn_id = data.get("mutual_match_connection_id")
+
+                now = datetime.now(timezone.utc)
+                if is_success:
+                    # Update database records
+                    await database.add_or_get_liker(
+                        user_id=clean_uid,
+                        username=username,
+                        profile_url=f"https://mingle2.com/users/view/{clean_uid}",
+                        avatar_img_url="",
+                        age_location="",
+                        detected_at=now,
+                        scheduled_like_at=now,
+                    )
+                    verif_details = f"Direct like confirmed on Mingle2{' (🎉 MUTUAL MATCH!)' if is_mutual else ''}"
+                    await database.update_status(
+                        clean_uid,
+                        "COMPLETED",
+                        verification_status="VERIFIED",
+                        verification_details=verif_details
+                    )
+
+                    if is_mutual:
+                        await self._log("SUCCESS", f"🎉 IT'S A MATCH! You and '{username}' (ID: {clean_uid}) are a match! Connection: {conn_id}")
+                        return True, f"Mutual Match confirmed with '{username}'!", {"is_mutual": True, "connection_id": conn_id}
+                    else:
+                        await self._log("SUCCESS", f"Liked '{username}' (ID: {clean_uid}) on Mingle2 ✓ (Notification delivered to candidate)")
+                        return True, f"Successfully liked '{username}' on Mingle2", {"is_mutual": False}
+                else:
+                    err_msg = res.get("error") or "Mingle2 rejected rate_only request"
+                    await self._log("WARN", f"Failed to like '{username}' (ID: {clean_uid}): {err_msg}")
+                    return False, err_msg, data
+
+            except Exception as e:
+                await self._log("ERROR", f"Error in rate_user_direct for '{username}': {e}")
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+                return False, str(e), {}
+
     async def like_user(self, user_info: Dict[str, Any], is_test_mode: Optional[bool] = None) -> Tuple[bool, str, str]:
         """
         Execute automated 'Like' / 'Match' action on Mingle2 for specified user.
@@ -1462,8 +1560,7 @@ class Mingle2BotEngine:
         1. Test Mode check (zero external platform mutations)
         2. Paywalled fan preview check (rejects fake rating IDs)
         3. Session authentication check
-        4. Candidate Identity Verification on https://mingle2.com/mutual_match/match/{user_id}
-        5. Execution & Verification step
+        4. Official Mingle2 rate_only execution with instant candidate notification
         Returns: (success: bool, message: str, status: str)
         """
         user_id = str(user_info.get("user_id") or user_info.get("platform_profile_id", "")).strip()
@@ -1483,125 +1580,13 @@ class Mingle2BotEngine:
             await self._log("WARN", f"[IDENTITY_FAILED] {err_msg}")
             return False, err_msg, "IDENTITY_FAILED"
 
-        # 3. Check authentication status
-        async with self._lock:
-            await self._log("INFO", f"Verifying identity and preparing like-back for '{username}' (ID: {user_id})...")
-            context = await self.get_context()
-            page = await context.new_page()
-
-            try:
-                # Navigate directly to candidate match URL
-                target_match_url = f"https://mingle2.com/mutual_match/match/{user_id}"
-                await page.goto(target_match_url, wait_until="domcontentloaded", timeout=settings.request_timeout_seconds * 1000)
-                await asyncio.sleep(1.5)
-                await dismiss_page_overlays(page)
-
-                current_url = strip_google_vignette(page.url.lower())
-                if "/user/login" in current_url or any(x in current_url for x in ["login", "sign_in", "step1", "register"]):
-                    self.session_status = "LOGGED_OUT"
-                    await page.close()
-                    await self._log("WARN", f"Session expired while liking '{username}'! Redirected to login.")
-                    return False, "Session expired (redirected to /user/login)", "SESSION_EXPIRED"
-
-                if "/user/deactivated" in current_url:
-                    await page.close()
-                    await self._log("WARN", f"Profile '{username}' (ID: {user_id}) is deactivated.")
-                    return False, "Candidate profile is deactivated on Mingle2", "PERMANENT_ERROR"
-
-                # 4. Strict Candidate Identity Verification
-                candidate_info = await page.evaluate(r"""() => {
-                    const form = document.querySelector('.rate-yes-btn form, form[action*="rate"]');
-                    const nameEl = document.querySelector('h1, h2, h3, .name, .username');
-                    const badge = document.querySelector('.annotation, .dropbtn .annotation, a[href*="mutual_match"] .badge');
-                    return {
-                        formAction: form ? form.action : null,
-                        name: nameEl ? nameEl.innerText.trim() : 'Unknown',
-                        badge: badge ? badge.innerText.trim() : null
-                    };
-                }""")
-
-                form_action = candidate_info.get("formAction")
-                initial_badge = candidate_info.get("badge")
-
-                if not form_action:
-                    await page.close()
-                    await self._log("WARN", f"Rate form not found on match page for candidate '{username}' (ID: {user_id}).")
-                    return False, "Candidate rating form not found on Mingle2 page", "EXECUTION_FAILED"
-
-                # Extract candidate ID from form action: /mutual_match/rate/<candidateId>
-                m_action = re.search(r"/rate/(\d+)", form_action)
-                actual_candidate_id = m_action.group(1) if m_action else None
-
-                if actual_candidate_id and str(actual_candidate_id) != str(user_id):
-                    await page.close()
-                    mismatch_msg = f"PROFILE IDENTITY MISMATCH: Expected candidate ID '{user_id}', but match page displays candidate '{candidate_info.get('name')}' (ID: '{actual_candidate_id}'). Action blocked."
-                    await self._log("ERROR", mismatch_msg)
-                    return False, mismatch_msg, "IDENTITY_FAILED"
-
-                await self._log("INFO", f"Candidate identity verified: '{username}' (ID: {user_id}). Executing like rating...")
-
-                # 5. Execute Rating via Native reCAPTCHA-Enabled Button Click
-                click_executed = await page.evaluate(r"""() => {
-                    const btn = document.querySelector('.rate-yes-btn form button, .rate-yes-btn button');
-                    if (!btn) return false;
-                    btn.click();
-                    return true;
-                }""")
-
-                if not click_executed:
-                    like_btn = page.locator('.rate-yes-btn form button, .rate-yes-btn button').first
-                    if await like_btn.count() > 0:
-                        await like_btn.click(force=True)
-                        click_executed = True
-
-                # Wait for Mingle2 to process rating
-                await asyncio.sleep(random.uniform(3.0, 4.0))
-
-                # Check if a mutual match modal appeared
-                match_info = await page.evaluate(r"""() => {
-                    const modals = Array.from(document.querySelectorAll('.remodal, .modal, [class*="match"], #send-msg-modal-inner-container')).filter(
-                        m => window.getComputedStyle(m).display !== 'none' && (m.innerText || '').length > 0
-                    );
-                    const text = modals.map(m => m.innerText.replace(/\s+/g, ' ').trim()).join(' ');
-                    const isMatch = text.toLowerCase().includes('mutual match') || text.toLowerCase().includes("it's a match") || text.toLowerCase().includes('break the ice');
-                    return { isMatch, text };
-                }""")
-
-                is_match = match_info.get("isMatch", False)
-                await dismiss_page_overlays(page)
-
-                # 6. VERIFYING Step: Proof of completion
-                await self._log("INFO", f"Action sent for '{username}' (ID: {user_id}). Verifying completion on platform...")
-                await asyncio.sleep(1.5)
-
-                # Verify by checking if reloading the candidate page shows already rated / redirected
-                await page.goto(target_match_url, wait_until="domcontentloaded", timeout=settings.request_timeout_seconds * 1000)
-                await asyncio.sleep(1.5)
-                new_form_action = await page.evaluate(r"""() => {
-                    const f = document.querySelector('.rate-yes-btn form, form[action*="rate"]');
-                    return f ? f.action : null;
-                }""")
-
-                # If the candidate URL is re-visited and the form action changed (or page redirected), the rating was accepted!
-                candidate_advanced = (new_form_action != form_action)
-
-                await page.close()
-
-                if click_executed or candidate_advanced or is_match:
-                    match_str = " (MUTUAL MATCH CONFIRMED!)" if is_match else ""
-                    await self._log("SUCCESS", f"LIKE BACK COMPLETED ✓ for '{username}' (ID: {user_id}){match_str}. Action verified.")
-                    return True, f"Like-back confirmed and verified for '{username}' (ID: {user_id}){match_str}", "COMPLETED"
-                else:
-                    await self._log("WARN", f"LIKE BACK UNVERIFIED for '{username}' (ID: {user_id}). Server payload did not confirm.")
-                    return False, "Like-back unverified: Platform payload did not confirm rating completion", "VERIFICATION_FAILED"
-
-            except Exception as e:
-                await self._log("ERROR", f"Error during like-back execution for '{username}': {e}")
-                try:
-                    await page.close()
-                except Exception:
-                    pass
-                return False, str(e), "TEMPORARY_ERROR"
+        # 3. Direct rating via Mingle2's official rate_only API
+        success, msg, details = await self.rate_user_direct(user_id, username)
+        if success:
+            match_str = " (MUTUAL MATCH CONFIRMED!)" if details.get("is_mutual") else ""
+            return True, f"Like confirmed on Mingle2 for '{username}' (ID: {user_id}){match_str}", "COMPLETED"
+        else:
+            return False, f"Failed liking '{username}': {msg}", "EXECUTION_FAILED"
 
     async def fetch_account_profile(self) -> Dict[str, Any]:
         """
@@ -2080,20 +2065,21 @@ class Mingle2BotEngine:
                     pass
                 return await database.get_cached_search_results("SEARCH")
 
-    async def fetch_online_users(self, limit: int = 30) -> List[Dict[str, Any]]:
+    async def fetch_online_users(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Query currently active / online users on Mingle2 (/online or /search).
+        Query currently active / online users on Mingle2 (https://mingle2.com/search/whos_online).
         Caches results in search_cache with search_type='ONLINE'.
         """
         async with self._lock:
-            await self._log("INFO", "Scanning Mingle2 for currently Online Users...")
+            await self._log("INFO", "Scanning Mingle2 for currently Online Users (https://mingle2.com/search/whos_online)...")
             context = await self.get_context()
             page = await context.new_page()
 
             try:
-                # Try /online or browse active users
-                target_url = "https://mingle2.com/online"
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                target_url = "https://mingle2.com/search/whos_online"
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
+                await asyncio.sleep(2.0)
+                await dismiss_page_overlays(page)
 
                 current_url = strip_google_vignette(page.url.lower())
                 if "/user/login" in current_url:
@@ -2101,56 +2087,54 @@ class Mingle2BotEngine:
                     await page.close()
                     return await database.get_cached_search_results("ONLINE")
 
-                await asyncio.sleep(2.0)
-
                 online_users = await page.evaluate(r"""
                     () => {
                         const items = [];
                         const seen = new Set();
                         const cards = document.querySelectorAll(
-                            '.online-user, .user-card, .profile-card, div[id^="user_"], .user_item'
+                            '.search-user-gallery-item.search-user-item, .search-user-item, div[id^="user-"]'
                         );
 
-                        function parseCard(el) {
-                            const link = el.querySelector('a[href*="/users/view/"], a[href*="/user/view/"], a[href*="/profile/"]');
-                            if (!link) return null;
-                            const href = link.href;
-                            const match = href.match(/(?:users\/view|user\/view|profile)\/([a-zA-Z0-9_-]+)/i);
-                            const userId = match ? match[1] : null;
-                            if (!userId || seen.has(userId)) return null;
-                            seen.add(userId);
+                        cards.forEach(el => {
+                            if (el.classList.contains('ads-item')) return;
+                            const rawId = el.getAttribute('data-id') || (el.id ? el.id.replace('user-', '') : null);
+                            if (!rawId || !/^\d+$/.test(rawId) || seen.has(rawId)) return;
+                            seen.add(rawId);
 
-                            const nameEl = el.querySelector('.username, .name, strong, h3') || link;
-                            const username = nameEl ? nameEl.innerText.trim() : 'User ' + userId;
+                            const nameEl = el.querySelector('.display-name') || el.querySelector('a[href*="/users/view/"]');
+                            const username = nameEl ? nameEl.innerText.trim() : `User ${rawId}`;
 
-                            const img = el.querySelector('img');
+                            const img = el.querySelector('img.user_thumbnail, img');
                             const avatar = img ? (img.getAttribute('data-src') || img.src) : '';
 
-                            const detailsEl = el.querySelector('.user_details, .details, .meta, p');
-                            const ageLoc = detailsEl ? detailsEl.innerText.replace(/\s+/g, ' ').trim() : '';
+                            const metaEl = el.querySelector('.gender-and-age');
+                            const locEl = el.querySelector('.location');
+                            const parts = [];
+                            if (metaEl && metaEl.innerText.trim()) parts.push(metaEl.innerText.trim());
+                            if (locEl && locEl.innerText.trim()) parts.push(locEl.innerText.trim());
+                            const ageLoc = parts.join(' • ');
 
                             let age = null;
                             let gender = null;
-                            const mAge = ageLoc.match(/(?:^|[,\s•])(\d{2})(?:[,\s•]|$)/);
+                            const mAge = ageLoc.match(/Age:\s*(\d+)/i) || ageLoc.match(/(?:^|[,\s•])(\d{2})(?:[,\s•]|$)/);
                             if (mAge) age = parseInt(mAge[1]);
                             if (/\b(?:female|woman|girl|f)\b/i.test(ageLoc)) gender = 'F';
                             else if (/\b(?:male|man|guy|m)\b/i.test(ageLoc)) gender = 'M';
 
-                            return {
-                                user_id: userId,
+                            const heart = el.querySelector('.heart-icon');
+                            const isAlreadyLiked = heart ? heart.classList.contains('selected') : false;
+
+                            items.push({
+                                user_id: rawId,
                                 username: username,
                                 age: age,
                                 gender: gender,
                                 age_location: ageLoc,
                                 avatar_url: avatar,
-                                profile_url: `https://mingle2.com/users/view/${userId}`,
-                                is_online: true
-                            };
-                        }
-
-                        cards.forEach(c => {
-                            const p = parseCard(c);
-                            if (p) items.push(p);
+                                profile_url: `https://mingle2.com/users/view/${rawId}`,
+                                is_online: true,
+                                is_already_liked: isAlreadyLiked
+                            });
                         });
 
                         return items;
@@ -2159,7 +2143,7 @@ class Mingle2BotEngine:
 
                 await page.close()
                 await database.save_search_results(online_users, "ONLINE")
-                await self._log("SUCCESS", f"Online scan complete. Found {len(online_users)} active user(s).")
+                await self._log("SUCCESS", f"Online scan complete. Found {len(online_users)} active online user(s).")
                 return online_users
 
             except Exception as e:

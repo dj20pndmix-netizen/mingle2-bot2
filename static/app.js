@@ -1281,7 +1281,23 @@ async function likeDirectUser(userId, username, profileUrl) {
   try {
     const res = await fetch(`/api/queue/${userId}/like-now`, { method: 'POST' });
     const data = await res.json();
-    showToast(`Liked ${username}!`, 'success');
+    if (data.status === 'already_liked') {
+      showToast(`${username} has already been liked!`, 'info');
+    } else if (data.status === 'processing' || data.status === 'success') {
+      showToast(`Liked ${username}! Notification sent on Mingle2.`, 'success');
+      const card = document.querySelector(`[data-user-id="${userId}"]`);
+      if (card) {
+        const likeBtn = card.querySelector('button');
+        if (likeBtn) {
+          likeBtn.className = 'flex-1 py-1.5 rounded-lg bg-slate-700 text-slate-400 cursor-not-allowed text-[11px] font-bold flex items-center justify-center gap-1';
+          likeBtn.disabled = true;
+          likeBtn.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-emerald-400"></i><span>Liked</span>';
+          if (window.lucide) window.lucide.createIcons();
+        }
+      }
+    } else {
+      showToast(data.message || 'Failed to like user.', 'error');
+    }
   } catch (e) {
     showToast('Failed to like user.', 'error');
   }
@@ -1418,10 +1434,17 @@ function renderOnlineUsers(users) {
           <p class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(u.age_location || 'Online Member')}</p>
         </div>
         <div class="flex items-center gap-1.5 pt-1 border-t border-white/5">
-          <button onclick="likeDirectUser('${u.user_id}', '${escapeHtml(u.username)}', '${u.profile_url}')" class="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center justify-center gap-1">
-            <i data-lucide="heart" class="w-3 h-3"></i>
-            <span>Like</span>
-          </button>
+          ${u.is_already_liked ? `
+            <button disabled class="flex-1 py-1.5 rounded-lg bg-slate-700 text-slate-400 cursor-not-allowed text-[11px] font-bold flex items-center justify-center gap-1">
+              <i data-lucide="check" class="w-3 h-3 text-emerald-400"></i>
+              <span>Liked</span>
+            </button>
+          ` : `
+            <button onclick="likeDirectUser('${u.user_id}', '${escapeHtml(u.username)}', '${u.profile_url}')" class="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center justify-center gap-1">
+              <i data-lucide="heart" class="w-3 h-3"></i>
+              <span>Like</span>
+            </button>
+          `}
           <button onclick="openMessageDirect('${u.user_id}', '${escapeHtml(u.username)}', '${u.avatar_url || ''}')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition" title="Message">
             <i data-lucide="mail" class="w-3.5 h-3.5"></i>
           </button>
