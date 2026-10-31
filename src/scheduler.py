@@ -105,7 +105,7 @@ class BotScheduler:
 
             now = datetime.now(timezone.utc)
             uname = str(found.get("username") or found.get("display_name", f"User {user_id}")) if found else f"User {user_id}"
-            user = await database.add_or_get_liker(
+            user, _ = await database.add_or_get_liker(
                 user_id=str(user_id),
                 username=uname,
                 profile_url=found.get("profile_url") or f"https://mingle2.com/users/view/{user_id}",
