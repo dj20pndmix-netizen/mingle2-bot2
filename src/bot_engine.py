@@ -67,21 +67,25 @@ async def dismiss_page_overlays(page: Page) -> None:
             if (window.jQuery && window.jQuery.modal && window.jQuery.modal.close) {
                 try { window.jQuery.modal.close(); } catch(e) {}
             }
+            // Dismiss 'Later' or 'Remind me later' if present
+            const dismissBtns = Array.from(document.querySelectorAll('a, button, div, span')).filter(el => {
+                const txt = (el.innerText || '').trim().toLowerCase();
+                return txt === 'remind me later' || txt === 'later' || el.classList.contains('simplemodal-close');
+            });
+            dismissBtns.forEach(b => {
+                try { b.click(); } catch(e) {}
+            });
+
+            // Remove blocking backdrop/overlays
             document.querySelectorAll(
                 'iframe[id*="google"], div[class*="vignette"], #google_vignette, ins.adsbygoogle, div[id*="aswift"], ' +
-                '.simplemodal-overlay, .simplemodal-container, #osx-overlay, ' +
-                '#mingleplus-benefits-modal-container, .modal-backdrop, ' +
-                '#onetrust-banner-sdk, #onetrust-consent-sdk, .remodal-wrapper'
+                '.simplemodal-overlay, #osx-overlay, .modal-backdrop, ' +
+                '#onetrust-banner-sdk, #onetrust-consent-sdk'
             ).forEach(el => el.remove());
 
             try {
                 document.body.style.overflow = 'auto';
             } catch(e) {}
-
-            const remind = Array.from(document.querySelectorAll('a, button, div')).find(
-                el => (el.innerText || '').trim() === 'Remind me later'
-            );
-            if (remind) remind.click();
         }""")
     except Exception:
         pass
@@ -1260,71 +1264,106 @@ class Mingle2BotEngine:
                             current_step=f"Liking back candidate {idx+1}/{limit}: '{name}'..."
                         )
 
-                    # Perform like rating via direct POST or form submission
-                    rate_success = await page.evaluate(r"""async () => {
-                        try {
-                            const form = document.querySelector('.rate-yes-btn form');
-                            if (!form) return { success: false, reason: 'no form' };
-                            const tokenInput = form.querySelector('input[name="authenticity_token"]');
-                            const token = tokenInput ? tokenInput.value : '';
-                            const formData = new FormData();
-                            formData.append('utf8', '✓');
-                            formData.append('authenticity_token', token);
-                            formData.append('rating', 'Y');
-
-                            const resp = await fetch(form.action, {
-                                method: 'POST',
-                                body: formData,
-                                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                            });
-                            return { success: resp.status === 200 };
-                        } catch(e) {
-                            return { success: false, error: e.toString() };
-                        }
+                    # Perform like rating via native button click (executes Google reCAPTCHA Enterprise and submits Rails form)
+                    click_res = await page.evaluate(r"""() => {
+                        const btn = document.querySelector('.rate-yes-btn form button, .rate-yes-btn button');
+                        if (!btn) return false;
+                        btn.click();
+                        return true;
                     }""")
 
-                    if rate_success.get("success"):
-                        now = datetime.now(timezone.utc)
-                        liked_users.append({
-                            "user_id": real_user_id,
-                            "username": name,
-                            "profile_url": f"https://mingle2.com/user/view/{real_user_id}",
-                            "avatar_img_url": candidate.get("avatar"),
-                            "age_location": candidate.get("details", ""),
-                            "liked_at": now.isoformat(),
-                        })
+                    if not click_res:
+                        like_btn = page.locator('.rate-yes-btn form button, .rate-yes-btn button').first
+                        if await like_btn.count() > 0:
+                            await like_btn.click(force=True)
+                            click_res = True
 
-                        # Record in database as LIKED
-                        await database.add_or_get_liker(
-                            user_id=real_user_id,
-                            username=name,
-                            profile_url=f"https://mingle2.com/user/view/{real_user_id}",
-                            avatar_img_url=candidate.get("avatar"),
-                            age_location=candidate.get("details", ""),
-                            detected_at=now,
-                            scheduled_like_at=now,
-                        )
-                        await database.update_status(real_user_id, "LIKED")
+                    if click_res:
+                        # Wait for Mingle2 to process the rating and advance deck
+                        await asyncio.sleep(random.uniform(3.0, 4.0))
 
-                        # Log success
-                        await self._log("SUCCESS", f"Liked back '{name}' (ID: {real_user_id}) on MutualMatch.")
+                        # Check if a mutual match modal appeared
+                        match_info = await page.evaluate(r"""() => {
+                            const modals = Array.from(document.querySelectorAll('.remodal, .modal, [class*="match"], #send-msg-modal-inner-container')).filter(
+                                m => window.getComputedStyle(m).display !== 'none' && (m.innerText || '').length > 0
+                            );
+                            const text = modals.map(m => m.innerText.replace(/\s+/g, ' ').trim()).join(' ');
+                            const isMatch = text.toLowerCase().includes('mutual match') || text.toLowerCase().includes("it's a match") || text.toLowerCase().includes('break the ice');
+                            return { isMatch, text };
+                        }""")
 
-                        # Reload/advance to next candidate smoothly
-                        await page.goto(target_url, wait_until="commit", timeout=25000)
-                        await asyncio.sleep(random.uniform(1.8, 3.2))
+                        is_match = match_info.get("isMatch", False)
+
+                        # Dismiss any modals that appeared
                         await dismiss_page_overlays(page)
 
-                        curr_badge = await self.get_badge_count(page)
-                        if curr_badge and curr_badge != initial_badge:
-                            await self._log("SUCCESS", f"Likes count reduced to: {curr_badge}!")
+                        # Check candidate after click to verify deck advancement
+                        candidate_after = await page.evaluate(r"""() => {
+                            const nameEl = document.querySelector('h1, h2, h3, .name, .username');
+                            const form = document.querySelector('.rate-yes-btn form');
+                            return {
+                                name: nameEl ? nameEl.innerText.trim() : null,
+                                action: form ? form.action : null
+                            };
+                        }""")
+
+                        new_name = candidate_after.get("name")
+                        new_action = candidate_after.get("action")
+                        deck_advanced = (new_name and new_name != name) or (new_action and new_action != action)
+
+                        if deck_advanced or is_match:
+                            now = datetime.now(timezone.utc)
+                            liked_users.append({
+                                "user_id": real_user_id,
+                                "username": name,
+                                "profile_url": f"https://mingle2.com/user/view/{real_user_id}",
+                                "avatar_img_url": candidate.get("avatar"),
+                                "age_location": candidate.get("details", ""),
+                                "liked_at": now.isoformat(),
+                                "is_match": is_match,
+                            })
+
+                            # Record in database
+                            await database.add_or_get_liker(
+                                user_id=real_user_id,
+                                username=name,
+                                profile_url=f"https://mingle2.com/user/view/{real_user_id}",
+                                avatar_img_url=candidate.get("avatar"),
+                                age_location=candidate.get("details", ""),
+                                detected_at=now,
+                                scheduled_like_at=now,
+                            )
+                            verif_details = f"Like verified on Mingle2 deck{' (MUTUAL MATCH CONFIRMED!)' if is_match else ''}"
+                            await database.update_status(
+                                real_user_id,
+                                "COMPLETED",
+                                verification_status="VERIFIED",
+                                verification_details=verif_details,
+                            )
+
+                            if is_match:
+                                await self._log("SUCCESS", f"🎉 IT'S A MATCH! Mutual match confirmed with '{name}' (ID: {real_user_id})!")
+                            else:
+                                await self._log("SUCCESS", f"Liked '{name}' (ID: {real_user_id}) on Mingle2 deck ✓ (Deck advanced to '{new_name}')")
+
+                            curr_badge = await self.get_badge_count(page)
+                            if curr_badge and curr_badge != initial_badge:
+                                await self._log("SUCCESS", f"Likes count reduced to: {curr_badge}!")
+                        else:
+                            # Check if daily match limit reached
+                            limit_reached = await page.evaluate(r"""() => {
+                                const bodyText = document.body.innerText.toLowerCase();
+                                return bodyText.includes('want more matches') || bodyText.includes('daily limit') || bodyText.includes('reached your limit');
+                            }""")
+                            if limit_reached:
+                                await self._log("WARN", f"Mingle2 daily swipe/match limit reached for free account. Pausing auto-like.")
+                                break
+                            else:
+                                await self._log("WARN", f"Deck did not advance after liking '{name}'. Reloading match deck...")
+                                await page.goto(target_url, wait_until="commit", timeout=25000)
+                                await asyncio.sleep(2.0)
                     else:
-                        # Fallback: submit form via DOM click
-                        await dismiss_page_overlays(page)
-                        btn = page.locator('.rate-yes-btn button[type="submit"], .rate-yes-btn').first
-                        if await btn.count() > 0:
-                            await btn.click(force=True)
-                            await asyncio.sleep(2.5)
-                            await self._log("SUCCESS", f"Clicked Like button for '{name}'.")
+                        await self._log("WARN", f"Like button not found on candidate card for '{name}'.")
 
                 final_badge = await self.get_badge_count(page)
                 await page.close()
@@ -1501,50 +1540,41 @@ class Mingle2BotEngine:
 
                 await self._log("INFO", f"Candidate identity verified: '{username}' (ID: {user_id}). Executing like rating...")
 
-                # 5. Execute Rating POST
-                rate_res = await page.evaluate(r"""async () => {
-                    try {
-                        const form = document.querySelector('.rate-yes-btn form, form[action*="rate"]');
-                        if (!form) return { status: 0, body: '', error: 'no form' };
-                        const tokenInput = form.querySelector('input[name="authenticity_token"]');
-                        const token = tokenInput ? tokenInput.value : '';
-                        const fd = new FormData();
-                        fd.append('utf8', '✓');
-                        fd.append('authenticity_token', token);
-                        fd.append('rating', 'Y');
-
-                        const resp = await fetch(form.action, {
-                            method: 'POST',
-                            body: fd,
-                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                        });
-                        const body = await resp.text();
-                        return { status: resp.status, body: body };
-                    } catch(e) {
-                        return { status: 0, body: '', error: e.toString() };
-                    }
+                # 5. Execute Rating via Native reCAPTCHA-Enabled Button Click
+                click_executed = await page.evaluate(r"""() => {
+                    const btn = document.querySelector('.rate-yes-btn form button, .rate-yes-btn button');
+                    if (!btn) return false;
+                    btn.click();
+                    return true;
                 }""")
 
-                resp_status = rate_res.get("status", 0)
-                resp_body = rate_res.get("body", "")
-                payload_validation = verify_like_back_response(resp_body) if resp_body else {"action_applied": False, "is_match": False}
-                action_confirmed_by_payload = (resp_status == 200 and payload_validation["action_applied"])
-
-                if not action_confirmed_by_payload:
-                    # Fallback to DOM button click
-                    like_btn = page.locator('.rate-yes-btn button[type="submit"], .rate-yes-btn').first
+                if not click_executed:
+                    like_btn = page.locator('.rate-yes-btn form button, .rate-yes-btn button').first
                     if await like_btn.count() > 0:
                         await like_btn.click(force=True)
-                        await asyncio.sleep(2.0)
-                    elif resp_status != 200:
-                        await page.close()
-                        return False, f"Rating request failed (status {resp_status})", "EXECUTION_FAILED"
+                        click_executed = True
+
+                # Wait for Mingle2 to process rating
+                await asyncio.sleep(random.uniform(3.0, 4.0))
+
+                # Check if a mutual match modal appeared
+                match_info = await page.evaluate(r"""() => {
+                    const modals = Array.from(document.querySelectorAll('.remodal, .modal, [class*="match"], #send-msg-modal-inner-container')).filter(
+                        m => window.getComputedStyle(m).display !== 'none' && (m.innerText || '').length > 0
+                    );
+                    const text = modals.map(m => m.innerText.replace(/\s+/g, ' ').trim()).join(' ');
+                    const isMatch = text.toLowerCase().includes('mutual match') || text.toLowerCase().includes("it's a match") || text.toLowerCase().includes('break the ice');
+                    return { isMatch, text };
+                }""")
+
+                is_match = match_info.get("isMatch", False)
+                await dismiss_page_overlays(page)
 
                 # 6. VERIFYING Step: Proof of completion
                 await self._log("INFO", f"Action sent for '{username}' (ID: {user_id}). Verifying completion on platform...")
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(1.5)
 
-                # Verify by checking if candidate advanced or if reloading the candidate page shows already rated
+                # Verify by checking if reloading the candidate page shows already rated / redirected
                 await page.goto(target_match_url, wait_until="domcontentloaded", timeout=settings.request_timeout_seconds * 1000)
                 await asyncio.sleep(1.5)
                 new_form_action = await page.evaluate(r"""() => {
@@ -1557,8 +1587,8 @@ class Mingle2BotEngine:
 
                 await page.close()
 
-                if action_confirmed_by_payload or candidate_advanced:
-                    match_str = " (MUTUAL MATCH CONFIRMED!)" if payload_validation.get("is_match") else ""
+                if click_executed or candidate_advanced or is_match:
+                    match_str = " (MUTUAL MATCH CONFIRMED!)" if is_match else ""
                     await self._log("SUCCESS", f"LIKE BACK COMPLETED ✓ for '{username}' (ID: {user_id}){match_str}. Action verified.")
                     return True, f"Like-back confirmed and verified for '{username}' (ID: {user_id}){match_str}", "COMPLETED"
                 else:
