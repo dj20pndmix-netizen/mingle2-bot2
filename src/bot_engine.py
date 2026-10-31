@@ -299,12 +299,14 @@ class Mingle2BotEngine:
         await self._init_playwright()
         target_headless = settings.headless_mode if headless is None else headless
 
-        if self._context is not None:
+        if self._context is not None and self._browser is not None:
             try:
-                _ = self._context.pages
-                return self._context
+                if self._browser.is_connected():
+                    _ = self._context.pages
+                    return self._context
             except Exception:
-                self._context = None
+                pass
+            self._context = None
 
         settings.ensure_directories()
         args = [
@@ -702,64 +704,73 @@ class Mingle2BotEngine:
         Every automation operation verifies session before performing work.
         Fast verification using /inbox/list with commit wait.
         """
-        try:
-            context = await self.get_context()
-            page = await context.new_page()
+        async with self._lock:
             try:
-                target_url = "https://mingle2.com/inbox/list"
-                await page.goto(
-                    target_url,
-                    wait_until="commit",
-                    timeout=20000,
-                )
-                await asyncio.sleep(0.5)
-                await dismiss_page_overlays(page)
-                current_url = strip_google_vignette(page.url.lower())
+                try:
+                    context = await self.get_context()
+                    page = await context.new_page()
+                except Exception:
+                    await self.stop_active_browser()
+                    context = await self.get_context()
+                    page = await context.new_page()
+                try:
+                    target_url = "https://mingle2.com/inbox/list"
+                    await page.goto(
+                        target_url,
+                        wait_until="commit",
+                        timeout=20000,
+                    )
+                    await asyncio.sleep(0.5)
+                    await dismiss_page_overlays(page)
+                    current_url = strip_google_vignette(page.url.lower())
 
-                if any(x in current_url for x in ["/user/login", "/login", "/sign_in", "step1", "register"]):
-                    await page.close()
-                    await self.handle_session_expiration("Redirected to login page.")
-                    return False
+                    if any(x in current_url for x in ["/user/login", "/login", "/sign_in", "step1", "register"]):
+                        await page.close()
+                        await self.handle_session_expiration("Redirected to login page.")
+                        return False
 
-                is_authenticated = await page.evaluate("""
-                    () => {
-                        const logoutBtn = document.querySelector('a[href*="logout"], a[href*="sign_out"]');
-                        const userNav = document.querySelector('.user-menu, .profile-nav, .user-avatar, #nav-user, a[href*="/inbox"], a[href*="/user/my_profile"], #header-user-menu, .nav-item-user');
-                        const hasLoginForm = !!document.querySelector('#login-form, form[action*="login"]');
-                        if (hasLoginForm) return false;
-                        if (logoutBtn || userNav) return true;
-                        return !location.pathname.includes('/user/login') && !location.pathname.includes('/login');
-                    }
-                """)
+                    is_authenticated = await page.evaluate("""
+                        () => {
+                            const logoutBtn = document.querySelector('a[href*="logout"], a[href*="sign_out"]');
+                            const userNav = document.querySelector('.user-menu, .profile-nav, .user-avatar, #nav-user, a[href*="/inbox"], a[href*="/user/my_profile"], #header-user-menu, .nav-item-user');
+                            const hasLoginForm = !!document.querySelector('#login-form, form[action*="login"]');
+                            if (hasLoginForm) return false;
+                            if (logoutBtn || userNav) return true;
+                            return !location.pathname.includes('/user/login') && !location.pathname.includes('/login');
+                        }
+                    """)
 
-                # Refresh storage state if verified
-                if is_authenticated:
+                    # Refresh storage state if verified
+                    if is_authenticated:
+                        try:
+                            storage_file = settings.data_dir / "storage_state.json"
+                            await context.storage_state(path=str(storage_file))
+                        except Exception:
+                            pass
+                        await page.close()
+                        if self._session_state != SessionState.CONNECTED:
+                            await self.set_session_state(SessionState.CONNECTED)
+                        return True
+                    else:
+                        await page.close()
+                        await self.handle_session_expiration("Authenticated DOM indicators missing.")
+                        return False
+                except Exception as page_err:
                     try:
-                        storage_file = settings.data_dir / "storage_state.json"
-                        await context.storage_state(path=str(storage_file))
+                        await page.close()
                     except Exception:
                         pass
-                    await page.close()
-                    if self._session_state != SessionState.CONNECTED:
-                        await self.set_session_state(SessionState.CONNECTED)
-                    return True
-                else:
-                    await page.close()
-                    await self.handle_session_expiration("Authenticated DOM indicators missing.")
+                    logger.warning(f"Session verification network notice: {page_err}")
+                    # Don't invalidate an already authenticated session on transient network timeouts
+                    if is_session_authenticated(self._session_state):
+                        return True
                     return False
-            except Exception as page_err:
-                try:
-                    await page.close()
-                except Exception:
-                    pass
-                logger.warning(f"Session verification network notice: {page_err}")
-                # Don't invalidate an already authenticated session on transient network timeouts
+            except Exception as e:
+                logger.warning(f"Browser launch check warning: {e}")
                 if is_session_authenticated(self._session_state):
                     return True
+                await self.handle_session_expiration(f"Browser error: {e}")
                 return False
-        except Exception as e:
-            await self.handle_session_expiration(f"Browser error: {e}")
-            return False
 
     verify_session = verify_mingle2_session
     check_login_status = verify_mingle2_session

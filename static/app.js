@@ -534,8 +534,6 @@ async function verifySession() {
   }
 }
 
-const loadDashboardStatus = refreshAll;
-
 async function stopBot() {
   try {
     const res = await fetch('/api/bot/stop', { method: 'POST' });
@@ -560,7 +558,9 @@ async function refreshAll() {
   }
 }
 
-const loadDashboardStatus = refreshAll;
+function loadDashboardStatus() {
+  return refreshAll();
+}
 
 async function runDiagnosticsCheck() {
   const icon = document.getElementById('diag-refresh-icon');
@@ -636,8 +636,6 @@ async function runDiagnosticsCheck() {
     if (icon) setTimeout(() => icon.classList.remove('animate-spin'), 1200);
   }
 }
-
-const loadDashboardStatus = refreshAll;
 
 async function testVerifyProfile() {
   const input = document.getElementById('verify-test-input');

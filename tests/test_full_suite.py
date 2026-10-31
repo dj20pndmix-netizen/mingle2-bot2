@@ -52,6 +52,8 @@ async def run_test():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={"width": 1400, "height": 900})
+        page.on("pageerror", lambda err: print(f"PAGE ERROR: {err}", flush=True))
+        page.on("console", lambda msg: print(f"CONSOLE: {msg.type}: {msg.text}", flush=True))
 
         try:
             # 2. Navigate to Dashboard

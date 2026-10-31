@@ -330,10 +330,15 @@ async def trigger_verify_session():
 
 
 @app.get("/api/auth/status")
-async def check_auth_status():
+async def check_auth_status(verify: bool = Query(False)):
     """Verify authenticated session with Mingle2."""
-    is_logged_in = await scheduler.engine.check_login_status()
     session_state = scheduler.engine.session_state
+    if verify or session_state not in (SessionState.CONNECTED, SessionState.SESSION_VERIFIED):
+        is_logged_in = await scheduler.engine.check_login_status()
+        session_state = scheduler.engine.session_state
+    else:
+        is_logged_in = is_session_authenticated(session_state)
+
     return {
         "is_logged_in": is_logged_in,
         "session_state": session_state.value,
@@ -434,7 +439,7 @@ async def upload_session_archive(file: UploadFile = File(...)):
 
     # Close any open browser context to reload clean profile
     try:
-        await scheduler.engine.close_context()
+        await scheduler.engine.stop_active_browser()
     except Exception:
         pass
 

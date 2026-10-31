@@ -10,6 +10,9 @@ venv/
 browser_data/Default/Cache/
 browser_data/Default/Code Cache/
 browser_data/Default/GPUCache/
+browser_data/Default/Sessions/
+browser_data/BrowserMetrics/
+browser_data/Default/Shared Dictionary/cache/
 
 # Logs & temp
 *.log

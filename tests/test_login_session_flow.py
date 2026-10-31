@@ -95,7 +95,12 @@ async def test_browser_launch_flow():
     mock_context.route = AsyncMock()
     mock_context.on = MagicMock()
 
+    mock_browser = MagicMock()
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_browser.is_connected = MagicMock(return_value=True)
+
     mock_chromium = MagicMock()
+    mock_chromium.launch = AsyncMock(return_value=mock_browser)
     mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
 
     mock_playwright = MagicMock()
