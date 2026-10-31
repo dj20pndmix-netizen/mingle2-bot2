@@ -157,6 +157,7 @@ class Mingle2BotEngine:
 
     def __init__(self, log_callback: Optional[Callable[[str, str], Any]] = None):
         self._playwright = None
+        self._browser = None
         self._context: Optional[BrowserContext] = None
         self._is_busy: bool = False
         self.is_login_mode: bool = False
@@ -267,13 +268,20 @@ class Mingle2BotEngine:
             logger.error(f"Error during auto-install: {e}")
 
     async def stop_active_browser(self) -> None:
-        """Releases the lock on browser_data directory and cleans up Playwright."""
+        """Releases the active browser context and cleans up Playwright."""
         if self._context:
             try:
                 await self._context.close()
             except Exception as e:
                 logger.debug(f"Context close error: {e}")
             self._context = None
+
+        if hasattr(self, "_browser") and self._browser:
+            try:
+                await self._browser.close()
+            except Exception as e:
+                logger.debug(f"Browser close error: {e}")
+            self._browser = None
 
         if self._playwright:
             try:
@@ -282,13 +290,12 @@ class Mingle2BotEngine:
                 logger.debug(f"Playwright stop error: {e}")
             self._playwright = None
 
-        # Brief pause to ensure Windows file system lock is completely released
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
 
     close_context = stop_active_browser
 
     async def get_context(self, headless: Optional[bool] = None) -> BrowserContext:
-        """Get or initialize persistent browser context."""
+        """Get or initialize browser context preloaded with authenticated storage state."""
         await self._init_playwright()
         target_headless = settings.headless_mode if headless is None else headless
 
@@ -308,25 +315,34 @@ class Mingle2BotEngine:
             "--disable-features=IsolateOrigins,site-per-process",
         ]
 
-        launch_kwargs = {
-            "user_data_dir": str(settings.browser_data_dir),
-            "headless": target_headless,
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                headless=target_headless,
+                args=args,
+                ignore_default_args=["--enable-automation"],
+            )
+        except Exception as launch_err:
+            if "Executable doesn't exist" in str(launch_err) or "playwright install" in str(launch_err).lower():
+                await self._ensure_playwright_installed()
+                self._browser = await self._playwright.chromium.launch(
+                    headless=target_headless,
+                    args=args,
+                    ignore_default_args=["--enable-automation"],
+                )
+            else:
+                raise launch_err
+
+        storage_state_file = settings.data_dir / "storage_state.json"
+        context_kwargs: Dict[str, Any] = {
             "viewport": {"width": 1280, "height": 850},
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "locale": "en-US",
             "timezone_id": "America/New_York",
-            "args": args,
-            "ignore_default_args": ["--enable-automation"],
         }
+        if storage_state_file.exists():
+            context_kwargs["storage_state"] = str(storage_state_file)
 
-        try:
-            self._context = await self._playwright.chromium.launch_persistent_context(**launch_kwargs)
-        except Exception as launch_err:
-            if "Executable doesn't exist" in str(launch_err) or "playwright install" in str(launch_err).lower():
-                await self._ensure_playwright_installed()
-                self._context = await self._playwright.chromium.launch_persistent_context(**launch_kwargs)
-            else:
-                raise launch_err
+        self._context = await self._browser.new_context(**context_kwargs)
 
         # Block Google Ads and Vignette popups to keep page clean and clickable
         await setup_ad_blocking(self._context)
@@ -338,20 +354,6 @@ class Mingle2BotEngine:
             Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
         """)
-
-        # Cross-platform cookie loader: Inject decrypted cookies from storage_state.json if available
-        storage_state_file = settings.data_dir / "storage_state.json"
-        if storage_state_file.exists():
-            try:
-                import json
-                state_data = json.loads(storage_state_file.read_text(encoding="utf-8"))
-                cookies = state_data.get("cookies", [])
-                mingle_cookies = [c for c in cookies if "mingle2" in c.get("domain", "")]
-                if mingle_cookies:
-                    await self._context.add_cookies(mingle_cookies)
-                    logger.info(f"Loaded {len(mingle_cookies)} cross-platform Mingle2 session cookies from storage_state.json")
-            except Exception as cookie_err:
-                logger.warning(f"Could not inject storage_state cookies: {cookie_err}")
 
         return self._context
 
@@ -384,27 +386,27 @@ class Mingle2BotEngine:
                 await self._log("INFO", "Launching visible browser for manual Mingle2 login...")
                 self._playwright = await async_playwright().start()
 
-                launch_kwargs = {
-                    "user_data_dir": str(settings.browser_data_dir),
-                    "headless": False,  # MUST be visible so the user can interact
-                    "viewport": {"width": 1280, "height": 850},
-                    "args": [
+                self._browser = await self._playwright.chromium.launch(
+                    headless=False,
+                    args=[
                         "--start-maximized",
                         "--disable-blink-features=AutomationControlled",
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
                     ],
-                    "ignore_default_args": ["--enable-automation"],
-                }
+                    ignore_default_args=["--enable-automation"],
+                )
 
-                try:
-                    self._context = await self._playwright.chromium.launch_persistent_context(**launch_kwargs)
-                except Exception as launch_err:
-                    if "Executable doesn't exist" in str(launch_err) or "playwright install" in str(launch_err).lower():
-                        await self._ensure_playwright_installed()
-                        self._context = await self._playwright.chromium.launch_persistent_context(**launch_kwargs)
-                    else:
-                        raise launch_err
+                storage_state_file = settings.data_dir / "storage_state.json"
+                context_kwargs: Dict[str, Any] = {
+                    "viewport": {"width": 1280, "height": 850},
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                    "locale": "en-US",
+                }
+                if storage_state_file.exists():
+                    context_kwargs["storage_state"] = str(storage_state_file)
+
+                self._context = await self._browser.new_context(**context_kwargs)
 
                 # Block ad network trackers and overlays
                 await setup_ad_blocking(self._context)
@@ -417,9 +419,9 @@ class Mingle2BotEngine:
                     Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 """)
 
-                page = self._context.pages[0] if self._context.pages else await self._context.new_page()
+                page = await self._context.new_page()
                 target_login_url = strip_google_vignette(settings.login_url)
-                await page.goto(target_login_url, wait_until="domcontentloaded", timeout=45000)
+                await page.goto(target_login_url, wait_until="commit", timeout=30000)
                 await self._log("SUCCESS", f"Browser opened successfully at Mingle2 login page: {target_login_url}")
 
                 await self.set_session_state(SessionState.WAITING_FOR_LOGIN)
@@ -656,6 +658,14 @@ class Mingle2BotEngine:
                                 except Exception as ss_err:
                                     logger.debug(f"Could not persist storage_state: {ss_err}")
 
+                                # Auto-export session archive for instant Render deployment
+                                try:
+                                    from src.session_manager import export_session_archive
+                                    export_session_archive()
+                                    logger.info("Auto-exported fresh minglebot_session.zip with new login session.")
+                                except Exception as zip_err:
+                                    logger.debug(f"Session archive auto-export note: {zip_err}")
+
                                 # Sync account profile
                                 try:
                                     await self.sync_account_profile()
@@ -663,7 +673,15 @@ class Mingle2BotEngine:
                                     logger.warning(f"Profile sync notice: {sync_err}")
 
                                 await self.set_session_state(SessionState.CONNECTED)
-                                await self._log("SUCCESS", "Mingle2 session verified: CONNECTED.")
+                                await self._log("SUCCESS", "Mingle2 session verified: CONNECTED. Account profile synced!")
+
+                                # Automatically close login browser once authenticated
+                                try:
+                                    await page.close()
+                                    await self.stop_active_browser()
+                                except Exception:
+                                    pass
+
                                 self.is_login_mode = False
                                 return True
                     except Exception as p_err:
@@ -671,7 +689,7 @@ class Mingle2BotEngine:
             except Exception as loop_err:
                 logger.debug(f"Wait for login check: {loop_err}")
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(1.5)
 
         await self._log("WARN", "Login detection timed out. Please try again.")
         if self._session_state == SessionState.WAITING_FOR_LOGIN:
@@ -682,22 +700,19 @@ class Mingle2BotEngine:
         """
         Determines whether the currently connected browser is still authenticated.
         Every automation operation verifies session before performing work.
-        If verification fails:
-        - calls handle_session_expiration()
-        - stops queued actions
-        - marks session as SESSION_EXPIRED
-        - notifies UI
+        Fast verification using /inbox/list with commit wait.
         """
         try:
             context = await self.get_context()
             page = await context.new_page()
             try:
-                target_url = "https://mingle2.com/mutual_match/match"
+                target_url = "https://mingle2.com/inbox/list"
                 await page.goto(
                     target_url,
-                    wait_until="domcontentloaded",
-                    timeout=30000,
+                    wait_until="commit",
+                    timeout=20000,
                 )
+                await asyncio.sleep(0.5)
                 await dismiss_page_overlays(page)
                 current_url = strip_google_vignette(page.url.lower())
 
@@ -713,8 +728,7 @@ class Mingle2BotEngine:
                         const hasLoginForm = !!document.querySelector('#login-form, form[action*="login"]');
                         if (hasLoginForm) return false;
                         if (logoutBtn || userNav) return true;
-                        const matchCard = document.querySelector('.mutual-match-card, #match-actions, button.btn-like, #btn-like');
-                        return !!matchCard;
+                        return !location.pathname.includes('/user/login') && !location.pathname.includes('/login');
                     }
                 """)
 
@@ -738,7 +752,10 @@ class Mingle2BotEngine:
                     await page.close()
                 except Exception:
                     pass
-                await self.handle_session_expiration(f"Navigation error: {page_err}")
+                logger.warning(f"Session verification network notice: {page_err}")
+                # Don't invalidate an already authenticated session on transient network timeouts
+                if is_session_authenticated(self._session_state):
+                    return True
                 return False
         except Exception as e:
             await self.handle_session_expiration(f"Browser error: {e}")
