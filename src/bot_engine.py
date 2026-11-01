@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import math
 import random
@@ -1695,6 +1696,22 @@ class Mingle2BotEngine:
                 self.session_status = "LOGGED_IN"
                 await asyncio.sleep(1.5)
 
+                sample_debug = await page.evaluate(r"""
+                    () => {
+                        const link = document.querySelector('a[href*="/inbox/conversation/"], a[href*="/inbox/mail_detail/"]');
+                        if (!link) return { debug: 'No conversation or mail_detail link found' };
+                        const row = link.closest('tr') || link.closest('li') || link.closest('.mail_row') || link.parentElement;
+                        return {
+                            link_href: link.href,
+                            link_text: link.innerText,
+                            row_tag: row ? row.tagName : null,
+                            row_class: row ? row.className : null,
+                            row_html: row ? row.innerHTML : null
+                        };
+                    }
+                """)
+                await self._log("INFO", f"Sample inbox row: {json.dumps(sample_debug)[:1800]}")
+
                 raw_threads = await page.evaluate(r"""
                     () => {
                         const threads = [];
@@ -2065,85 +2082,143 @@ class Mingle2BotEngine:
                     pass
                 return await database.get_cached_search_results("SEARCH")
 
-    async def fetch_online_users(self, limit: int = 50) -> List[Dict[str, Any]]:
+    async def fetch_online_users(self, limit: int = 500, max_pages: int = 35) -> List[Dict[str, Any]]:
         """
         Query currently active / online users on Mingle2 (https://mingle2.com/search/whos_online).
+        Paginates across multiple search pages (?page=1, ?page=2, ...) to collect hundreds or thousands of online members.
         Caches results in search_cache with search_type='ONLINE'.
         """
         async with self._lock:
-            await self._log("INFO", "Scanning Mingle2 for currently Online Users (https://mingle2.com/search/whos_online)...")
+            await self._log("INFO", f"Scanning Mingle2 for Online Users across pages (target: up to {limit} users)...")
             context = await self.get_context()
             page = await context.new_page()
 
+            online_users: List[Dict[str, Any]] = []
+            seen_ids = set()
+            total_reported = None
+
             try:
-                target_url = "https://mingle2.com/search/whos_online"
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
-                await asyncio.sleep(2.0)
-                await dismiss_page_overlays(page)
+                page_num = 1
+                while page_num <= max_pages and len(online_users) < limit:
+                    target_url = f"https://mingle2.com/search/whos_online?page={page_num}" if page_num > 1 else "https://mingle2.com/search/whos_online"
+                    target_url = strip_google_vignette(target_url)
 
-                current_url = strip_google_vignette(page.url.lower())
-                if "/user/login" in current_url:
-                    self.session_status = "LOGGED_OUT"
-                    await page.close()
-                    return await database.get_cached_search_results("ONLINE")
+                    try:
+                        await page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
+                    except Exception as goto_err:
+                        await self._log("WARN", f"Online page {page_num} timeout ({goto_err}), checking DOM...")
 
-                online_users = await page.evaluate(r"""
-                    () => {
-                        const items = [];
-                        const seen = new Set();
-                        const cards = document.querySelectorAll(
-                            '.search-user-gallery-item.search-user-item, .search-user-item, div[id^="user-"]'
-                        );
+                    await asyncio.sleep(1.2)
+                    await dismiss_page_overlays(page)
 
-                        cards.forEach(el => {
-                            if (el.classList.contains('ads-item')) return;
-                            const rawId = el.getAttribute('data-id') || (el.id ? el.id.replace('user-', '') : null);
-                            if (!rawId || !/^\d+$/.test(rawId) || seen.has(rawId)) return;
-                            seen.add(rawId);
+                    current_url = strip_google_vignette(page.url.lower())
+                    if "/user/login" in current_url:
+                        self.session_status = "LOGGED_OUT"
+                        await page.close()
+                        return await database.get_cached_search_results("ONLINE")
 
-                            const nameEl = el.querySelector('.display-name') || el.querySelector('a[href*="/users/view/"]');
-                            const username = nameEl ? nameEl.innerText.trim() : `User ${rawId}`;
+                    # Extract page data: users and total reported count
+                    page_data = await page.evaluate(r"""
+                        () => {
+                            const items = [];
+                            const seenOnPage = new Set();
 
-                            const img = el.querySelector('img.user_thumbnail, img');
-                            const avatar = img ? (img.getAttribute('data-src') || img.src) : '';
+                            // Check total matches count in header (e.g. '1563 Matches')
+                            let reportedTotal = null;
+                            const allHeadings = Array.from(document.querySelectorAll('h1, h2, h3, .total-count, .search-count, .matches-count, div, span'));
+                            for (const el of allHeadings) {
+                                const txt = el.innerText ? el.innerText.trim() : '';
+                                const match = txt.match(/(\d[\d,]*)\s+Matches/i);
+                                if (match) {
+                                    reportedTotal = parseInt(match[1].replace(/,/g, ''));
+                                    break;
+                                }
+                            }
 
-                            const metaEl = el.querySelector('.gender-and-age');
-                            const locEl = el.querySelector('.location');
-                            const parts = [];
-                            if (metaEl && metaEl.innerText.trim()) parts.push(metaEl.innerText.trim());
-                            if (locEl && locEl.innerText.trim()) parts.push(locEl.innerText.trim());
-                            const ageLoc = parts.join(' • ');
+                            const cards = document.querySelectorAll(
+                                '.search-user-gallery-item.search-user-item, .search-user-item, div[id^="user-"]'
+                            );
 
-                            let age = null;
-                            let gender = null;
-                            const mAge = ageLoc.match(/Age:\s*(\d+)/i) || ageLoc.match(/(?:^|[,\s•])(\d{2})(?:[,\s•]|$)/);
-                            if (mAge) age = parseInt(mAge[1]);
-                            if (/\b(?:female|woman|girl|f)\b/i.test(ageLoc)) gender = 'F';
-                            else if (/\b(?:male|man|guy|m)\b/i.test(ageLoc)) gender = 'M';
+                            cards.forEach(el => {
+                                if (el.classList.contains('ads-item')) return;
+                                const rawId = el.getAttribute('data-id') || (el.id ? el.id.replace('user-', '') : null);
+                                if (!rawId || !/^\d+$/.test(rawId) || seenOnPage.has(rawId)) return;
+                                seenOnPage.add(rawId);
 
-                            const heart = el.querySelector('.heart-icon');
-                            const isAlreadyLiked = heart ? heart.classList.contains('selected') : false;
+                                const nameEl = el.querySelector('.display-name') || el.querySelector('a[href*="/users/view/"]');
+                                const username = nameEl ? nameEl.innerText.trim() : `User ${rawId}`;
 
-                            items.push({
-                                user_id: rawId,
-                                username: username,
-                                age: age,
-                                gender: gender,
-                                age_location: ageLoc,
-                                avatar_url: avatar,
-                                profile_url: `https://mingle2.com/users/view/${rawId}`,
-                                is_online: true,
-                                is_already_liked: isAlreadyLiked
+                                const img = el.querySelector('img.user_thumbnail, img');
+                                const avatar = img ? (img.getAttribute('data-src') || img.src) : '';
+
+                                const metaEl = el.querySelector('.gender-and-age');
+                                const locEl = el.querySelector('.location');
+                                const parts = [];
+                                if (metaEl && metaEl.innerText.trim()) parts.push(metaEl.innerText.trim());
+                                if (locEl && locEl.innerText.trim()) parts.push(locEl.innerText.trim());
+                                const ageLoc = parts.join(' • ');
+
+                                let age = null;
+                                let gender = null;
+                                const mAge = ageLoc.match(/Age:\s*(\d+)/i) || ageLoc.match(/(?:^|[,\s•])(\d{2})(?:[,\s•]|$)/);
+                                if (mAge) age = parseInt(mAge[1]);
+                                if (/\b(?:female|woman|girl|f)\b/i.test(ageLoc)) gender = 'F';
+                                else if (/\b(?:male|man|guy|m)\b/i.test(ageLoc)) gender = 'M';
+
+                                const heart = el.querySelector('.heart-icon');
+                                const isAlreadyLiked = heart ? heart.classList.contains('selected') : false;
+
+                                items.push({
+                                    user_id: rawId,
+                                    username: username,
+                                    age: age,
+                                    gender: gender,
+                                    age_location: ageLoc,
+                                    avatar_url: avatar,
+                                    profile_url: `https://mingle2.com/users/view/${rawId}`,
+                                    is_online: true,
+                                    is_already_liked: isAlreadyLiked
+                                });
                             });
-                        });
 
-                        return items;
-                    }
-                """)
+                            return {
+                                items: items,
+                                reportedTotal: reportedTotal
+                            };
+                        }
+                    """)
+
+                    new_items = page_data.get("items", [])
+                    if page_num == 1 and page_data.get("reportedTotal"):
+                        total_reported = page_data.get("reportedTotal")
+                        await self._log("INFO", f"Mingle2 reports {total_reported:,} active users online right now!")
+
+                    if not new_items:
+                        await self._log("INFO", f"No more online cards found on page {page_num}. Ending pagination.")
+                        break
+
+                    added_count = 0
+                    for u in new_items:
+                        uid = u["user_id"]
+                        if uid not in seen_ids:
+                            seen_ids.add(uid)
+                            online_users.append(u)
+                            added_count += 1
+                            if len(online_users) >= limit:
+                                break
+
+                    await self._log("INFO", f"Online Page {page_num}: Added {added_count} users (Total: {len(online_users)}/{total_reported or limit}).")
+
+                    if len(online_users) >= limit:
+                        break
+
+                    page_num += 1
+                    await asyncio.sleep(0.8)
 
                 await page.close()
                 await database.save_search_results(online_users, "ONLINE")
-                await self._log("SUCCESS", f"Online scan complete. Found {len(online_users)} active online user(s).")
+                total_str = f" of {total_reported:,} total on Mingle2" if total_reported else ""
+                await self._log("SUCCESS", f"Online scan complete across {page_num} page(s). Synced {len(online_users)} active online users{total_str}!")
                 return online_users
 
             except Exception as e:

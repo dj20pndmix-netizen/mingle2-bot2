@@ -690,16 +690,19 @@ async def get_cached_search():
 
 
 @app.get("/api/online")
-async def get_online_users():
+async def get_online_users(limit: int = Query(2000, ge=1, le=5000)):
     """Get cached online users."""
-    results = await database.get_cached_search_results("ONLINE")
-    return {"users": results}
+    results = await database.get_cached_search_results("ONLINE", limit=limit)
+    return {"status": "success", "count": len(results), "users": results}
 
 
 @app.post("/api/online/sync")
-async def sync_online_users():
-    """Query live online users from Mingle2."""
-    users = await scheduler.engine.fetch_online_users(limit=30)
+async def sync_online_users(
+    limit: int = Query(500, ge=10, le=3000),
+    max_pages: int = Query(35, ge=1, le=60)
+):
+    """Query live online users from Mingle2 across multiple pages."""
+    users = await scheduler.engine.fetch_online_users(limit=limit, max_pages=max_pages)
     await manager.broadcast({"event": "online_synced", "data": users})
     return {"status": "success", "count": len(users), "users": users}
 

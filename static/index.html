@@ -831,8 +831,9 @@
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
               <i data-lucide="radio" class="w-5 h-5 text-emerald-400"></i>
               <span>Who's Online Now on Mingle2</span>
+              <span id="online-users-count-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0 Online</span>
             </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Live active users on Mingle2 ready for instant interaction.</p>
+            <p class="text-xs text-slate-400 mt-0.5" id="online-subtitle">Over 1,000+ live active members on Mingle2 ready for instant interaction.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <!-- Filter Pills -->
@@ -843,17 +844,25 @@
               <button onclick="filterOnlineGrid('NURSES')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="NURSES">🩺 Nurses</button>
             </div>
 
-            <button onclick="syncOnlineUsers()" id="btn-sync-online" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5">
+            <!-- Multi-Page Scan Triggers -->
+            <button onclick="syncOnlineUsers(100, 4)" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 transition" title="Scan first 100 online users">
+              <span>Scan 100</span>
+            </button>
+            <button onclick="syncOnlineUsers(500, 20)" id="btn-sync-online" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5" title="Scan up to 500 active online members across pages">
               <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="online-sync-icon"></i>
-              <span>Refresh Online</span>
+              <span>Scan 500+ Online</span>
+            </button>
+            <button onclick="syncOnlineUsers(1500, 50)" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 transition flex items-center gap-1.5" title="Deep scan all pages (1000+ active online users)">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Scan All (1000+)</span>
             </button>
             <button onclick="likeFilteredOnlineUsers()" id="btn-like-filtered-online" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 transition flex items-center gap-1.5" title="Like all currently visible filtered online ladies">
               <i data-lucide="heart" class="w-3.5 h-3.5"></i>
               <span>Like Filtered Ladies</span>
             </button>
-            <button onclick="quickLaunchTask('LIKE_ONLINE_USERS', { limit: 10 })" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
+            <button onclick="quickLaunchTask('LIKE_ONLINE_USERS', { limit: 25 })" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
               <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-              <span>Auto-Like 10 Online</span>
+              <span>Auto-Like 25 Online</span>
             </button>
           </div>
         </div>

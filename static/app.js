@@ -1348,7 +1348,7 @@ async function likeFilteredOnlineUsers() {
 
 async function loadOnlineUsers() {
   try {
-    const res = await fetch('/api/online');
+    const res = await fetch('/api/online?limit=2000');
     const data = await res.json();
     renderOnlineUsers(data.users || []);
   } catch (e) {
@@ -1356,15 +1356,15 @@ async function loadOnlineUsers() {
   }
 }
 
-async function syncOnlineUsers() {
+async function syncOnlineUsers(limit = 500, maxPages = 35) {
   const icon = document.getElementById('online-sync-icon');
   if (icon) icon.classList.add('animate-spin');
   try {
-    showToast('Scanning active online users on Mingle2...', 'info');
-    const res = await fetch('/api/online/sync', { method: 'POST' });
+    showToast(`Scanning active online users on Mingle2 (up to ${limit})...`, 'info');
+    const res = await fetch(`/api/online/sync?limit=${limit}&max_pages=${maxPages}`, { method: 'POST' });
     const data = await res.json();
     renderOnlineUsers(data.users || []);
-    showToast(`Found ${data.count || 0} active online user(s).`, 'success');
+    showToast(`Found and synced ${data.count || 0} active online user(s)!`, 'success');
   } catch (e) {
     showToast('Failed to sync online users.', 'error');
   } finally {
@@ -1406,6 +1406,11 @@ function renderOnlineUsers(users) {
       const text = ((u.age_location || '') + ' ' + (u.username || '')).toLowerCase();
       return /\b(?:nurse|rn|lpn|nursing|clinic|hospital)\b/i.test(text);
     });
+  }
+
+  const badge = document.getElementById('online-users-count-badge');
+  if (badge) {
+    badge.innerText = `${filtered.length} Online (${allCachedOnlineUsers.length} Synced)`;
   }
 
   if (!filtered || filtered.length === 0) {

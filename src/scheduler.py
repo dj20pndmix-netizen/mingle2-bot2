@@ -477,10 +477,11 @@ class BotScheduler:
 
     async def _task_like_online_users(self, task_id: int, limit: int) -> None:
         """Task: Find online users and autonomously like their profiles."""
-        await database.update_task_progress(task_id, 20, "Scraping currently active online users...")
+        await database.update_task_progress(task_id, 20, "Scraping currently active online users across pages...")
         await self._emit("task_updated", await database.get_task_by_id(task_id))
 
-        users = await self.engine.fetch_online_users(limit=limit)
+        fetch_limit = max(limit * 3, 100)
+        users = await self.engine.fetch_online_users(limit=fetch_limit, max_pages=15)
         if not users:
             await database.update_task_progress(
                 task_id=task_id,
@@ -603,9 +604,9 @@ class BotScheduler:
         await self._emit("task_updated", await database.get_task_by_id(task_id))
         await self.engine.scan_interested_users()
 
-        await database.update_task_progress(task_id, 85, "[4/4] Scanning Online Users...")
+        await database.update_task_progress(task_id, 85, "[4/4] Scanning Online Users across pages...")
         await self._emit("task_updated", await database.get_task_by_id(task_id))
-        await self.engine.fetch_online_users(limit=20)
+        await self.engine.fetch_online_users(limit=250, max_pages=10)
 
         await database.update_task_progress(
             task_id=task_id,

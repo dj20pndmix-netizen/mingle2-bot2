@@ -837,6 +837,41 @@ async def save_inbox_threads(threads: List[Dict[str, Any]]) -> None:
         await db.commit()
 
 
+async def get_avatar_for_user(user_id: str) -> Optional[str]:
+    """Retrieve known avatar URL from any table for a given user ID."""
+    uid = str(user_id)
+    async with aiosqlite.connect(settings.db_path) as db:
+        for query, params in [
+            ("SELECT avatar_url FROM inbox_threads WHERE user_id = ? AND avatar_url IS NOT NULL AND avatar_url != ''", (uid,)),
+            ("SELECT avatar_img_url FROM likes_queue WHERE user_id = ? AND avatar_img_url IS NOT NULL AND avatar_img_url != ''", (uid,)),
+            ("SELECT avatar_url FROM search_cache WHERE user_id = ? AND avatar_url IS NOT NULL AND avatar_url != ''", (uid,)),
+            ("SELECT photo_reference FROM profiles WHERE platform_profile_id = ? AND photo_reference IS NOT NULL AND photo_reference != ''", (uid,)),
+        ]:
+            cursor = await db.execute(query, params)
+            row = await cursor.fetchone()
+            if row and row[0]:
+                return row[0]
+    return None
+
+
+async def update_thread_profile(user_id: str, avatar_url: Optional[str] = None, username: Optional[str] = None) -> None:
+    """Update avatar or username for a specific conversation thread."""
+    updates = []
+    params = []
+    if avatar_url:
+        updates.append("avatar_url = ?")
+        params.append(avatar_url)
+    if username:
+        updates.append("username = ?")
+        params.append(username)
+    if not updates:
+        return
+    params.append(str(user_id))
+    async with aiosqlite.connect(settings.db_path) as db:
+        await db.execute(f"UPDATE inbox_threads SET {', '.join(updates)} WHERE user_id = ?", params)
+        await db.commit()
+
+
 async def get_inbox_threads() -> List[Dict[str, Any]]:
     """Retrieve all conversations ordered by recent activity."""
     async with aiosqlite.connect(settings.db_path) as db:
@@ -1090,7 +1125,7 @@ async def save_search_results(results: List[Dict[str, Any]], search_type: str = 
         await db.commit()
 
 
-async def get_cached_search_results(search_type: str = "SEARCH", limit: int = 100) -> List[Dict[str, Any]]:
+async def get_cached_search_results(search_type: str = "SEARCH", limit: int = 2000) -> List[Dict[str, Any]]:
     """Retrieve cached search or online users."""
     async with aiosqlite.connect(settings.db_path) as db:
         db.row_factory = aiosqlite.Row
