@@ -160,6 +160,7 @@ function handleSocketEvent(payload) {
     case 'new_liker_detected':
       showToast(`Detected new interested user: ${data.username}`, 'info');
       loadQueue();
+    loadMutualMatches();
       break;
 
     case 'queue_updated':
@@ -1382,6 +1383,13 @@ function renderOnlineUsers(users) {
   if (!container) return;
 
   let filtered = [...users];
+  if (currentOnlineCountry && currentOnlineCountry !== 'ALL') {
+    const cLow = currentOnlineCountry.toLowerCase();
+    filtered = filtered.filter(u => {
+      const loc = ((u.location || '') + ' ' + (u.age_location || '')).toLowerCase();
+      return loc.includes(cLow);
+    });
+  }
   if (currentOnlineFilter === 'FEMALES') {
     filtered = filtered.filter(u => {
       const g = (u.gender || '').toUpperCase();
@@ -2052,4 +2060,82 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+
+// ============================================================================
+// VERIFIED MUTUAL MATCHES & COUNTRY FILTERING EXTENSIONS
+// ============================================================================
+let currentOnlineCountry = 'ALL';
+
+function filterOnlineByCountry(country) {
+  currentOnlineCountry = country || 'ALL';
+  renderOnlineUsers(allCachedOnlineUsers);
+}
+
+async function loadMutualMatches() {
+  try {
+    const res = await fetch('/api/matches?limit=100');
+    const data = await res.json();
+    renderMutualMatches(data.matches || []);
+  } catch (e) {
+    console.error('Error loading mutual matches:', e);
+  }
+}
+
+async function syncMutualMatches() {
+  const icon = document.getElementById('matches-sync-icon');
+  if (icon) icon.classList.add('animate-spin');
+  try {
+    showToast('Syncing confirmed mutual matches from Mingle2...', 'info');
+    const res = await fetch('/api/matches/sync', { method: 'POST' });
+    const data = await res.json();
+    renderMutualMatches(data.matches || []);
+    showToast(`Synced ${data.count || 0} confirmed mutual match(es) from Mingle2!`, 'success');
+  } catch (e) {
+    showToast('Failed syncing mutual matches.', 'error');
+  } finally {
+    if (icon) icon.classList.remove('animate-spin');
+  }
+}
+
+function renderMutualMatches(matches) {
+  const gallery = document.getElementById('verified-matches-gallery');
+  const badge = document.getElementById('verified-matches-count-badge');
+  const overviewBadge = document.getElementById('overview-matches-count');
+  
+  if (badge) badge.innerText = matches.length;
+  if (overviewBadge) overviewBadge.innerText = matches.length;
+  
+  if (!gallery) return;
+  if (!matches || matches.length === 0) {
+    gallery.innerHTML = `
+      <div class="col-span-full py-4 text-center text-xs text-slate-500">
+        No confirmed mutual matches synced yet. Click "Sync Verified Matches" or "Like Back On Deck".
+      </div>`;
+    return;
+  }
+  
+  gallery.innerHTML = matches.map(m => {
+    const avatar = m.avatar_img_url || m.avatar_url || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200';
+    return `
+      <div class="glass-panel glass-panel-hover rounded-xl p-2.5 flex flex-col justify-between space-y-2 border border-amber-500/20 bg-slate-900/60">
+        <div class="relative">
+          <img src="${avatar}" alt="" class="w-full h-28 rounded-lg object-cover border border-white/10">
+          <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500 text-slate-950 flex items-center gap-0.5 shadow-md">
+            MATCH
+          </span>
+        </div>
+        <div>
+          <a href="${m.profile_url}" target="_blank" class="text-xs font-bold text-white hover:text-amber-400 truncate block">
+            ${escapeHtml(m.username)}
+          </a>
+          <span class="text-[10px] text-slate-400 block truncate">${escapeHtml(m.age_location || '')}</span>
+        </div>
+        <a href="${m.profile_url}" target="_blank" class="w-full py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold text-center block transition">
+          View Profile
+        </a>
+      </div>`;
+  }).join('');
+  if (window.lucide) window.lucide.createIcons();
 }

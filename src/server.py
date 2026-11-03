@@ -689,20 +689,45 @@ async def get_cached_search():
     return {"results": results}
 
 
+@app.get("/api/matches")
+async def get_matches_endpoint(limit: int = Query(100, ge=1, le=500)):
+    """Retrieve verified mutual matches from Mingle2."""
+    matches = await database.get_matches(limit=limit)
+    return {"status": "success", "count": len(matches), "matches": matches}
+
+
+@app.post("/api/matches/sync")
+async def sync_matches_endpoint():
+    """Sync confirmed mutual matches directly from Mingle2's your_matches page."""
+    matches = await scheduler.engine.fetch_your_matches()
+    await manager.broadcast({"event": "matches_synced", "data": matches})
+    return {"status": "success", "count": len(matches), "matches": matches}
+
+
 @app.get("/api/online")
-async def get_online_users(limit: int = Query(2000, ge=1, le=5000)):
-    """Get cached online users."""
+async def get_online_users(
+    limit: int = Query(2000, ge=1, le=5000),
+    country: Optional[str] = Query(None)
+):
+    """Get cached online users, optionally filtered by country."""
     results = await database.get_cached_search_results("ONLINE", limit=limit)
+    if country and country.upper() != "ALL":
+        c_low = country.lower()
+        results = [
+            u for u in results
+            if c_low in (u.get("location") or "").lower() or c_low in (u.get("age_location") or "").lower()
+        ]
     return {"status": "success", "count": len(results), "users": results}
 
 
 @app.post("/api/online/sync")
 async def sync_online_users(
     limit: int = Query(500, ge=10, le=3000),
-    max_pages: int = Query(35, ge=1, le=60)
+    max_pages: int = Query(35, ge=1, le=60),
+    country: Optional[str] = Query(None)
 ):
     """Query live online users from Mingle2 across multiple pages."""
-    users = await scheduler.engine.fetch_online_users(limit=limit, max_pages=max_pages)
+    users = await scheduler.engine.fetch_online_users(limit=limit, max_pages=max_pages, country=country)
     await manager.broadcast({"event": "online_synced", "data": users})
     return {"status": "success", "count": len(users), "users": users}
 

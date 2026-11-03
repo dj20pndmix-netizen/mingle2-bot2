@@ -636,6 +636,14 @@
             <p class="text-xs text-slate-400 mt-0.5">Automated 5-minute delayed like-backs with anti-bot mouse curves & jitter.</p>
           </div>
           <div class="flex items-center gap-2">
+            <button onclick="syncMutualMatches()" id="btn-sync-matches" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5" title="Sync confirmed mutual matches from Mingle2">
+              <i data-lucide="check-check" class="w-3.5 h-3.5" id="matches-sync-icon"></i>
+              <span>Sync Verified Matches</span>
+            </button>
+            <button onclick="quickLaunchTask('AUTO_LIKE_MUTUAL_MATCH', { limit: 25 })" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20 transition flex items-center gap-1.5" title="Like back candidates on Mingle2 deck to create mutual matches">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span>Like Back On Deck</span>
+            </button>
             <button onclick="triggerScan()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5">
               <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="matches-scan-icon"></i>
               <span>Scan Likers</span>
@@ -648,6 +656,23 @@
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               <span>Clear Test Data</span>
             </button>
+          </div>
+        </div>
+
+        <!-- Verified Mutual Matches Gallery -->
+        <div class="space-y-3 pb-3 border-b border-white/5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs uppercase font-bold text-amber-400 flex items-center gap-1.5 tracking-wider">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Verified Mutual Matches on Mingle2</span>
+              <span id="verified-matches-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+            </h3>
+            <span class="text-[11px] text-slate-400">Confirmed mutual likes on Mingle2 app</span>
+          </div>
+          <div id="verified-matches-gallery" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div class="col-span-full py-4 text-center text-xs text-slate-500">
+              Loading verified mutual matches...
+            </div>
           </div>
         </div>
 
@@ -750,11 +775,19 @@
             <div>
               <label class="block text-xs font-semibold text-slate-400 mb-1">Country</label>
               <select id="search-country" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400">
-                <option value="">Any Country</option>
-                <option value="US" selected>United States</option>
-                <option value="CA">Canada</option>
-                <option value="GB">United Kingdom</option>
-                <option value="AU">Australia</option>
+                <option value="">🌍 Worldwide (Any Country)</option>
+                <option value="US" selected>🇺🇸 United States</option>
+                <option value="GB">🇬🇧 United Kingdom</option>
+                <option value="CA">🇨🇦 Canada</option>
+                <option value="AU">🇦🇺 Australia</option>
+                <option value="KE">🇰🇪 Kenya</option>
+                <option value="NG">🇳🇬 Nigeria</option>
+                <option value="PH">🇵🇭 Philippines</option>
+                <option value="DE">🇩🇪 Germany</option>
+                <option value="UG">🇺🇬 Uganda</option>
+                <option value="ZA">🇿🇦 South Africa</option>
+                <option value="IN">🇮🇳 India</option>
+                <option value="GH">🇬🇭 Ghana</option>
               </select>
             </div>
 
@@ -843,6 +876,23 @@
               <button onclick="filterOnlineGrid('FEMALES')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="FEMALES">👩 Females</button>
               <button onclick="filterOnlineGrid('NURSES')" class="online-filter-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition" data-filter="NURSES">🩺 Nurses</button>
             </div>
+
+            <!-- Country Filter Selector -->
+            <select id="online-country-filter" onchange="filterOnlineByCountry(this.value)" class="bg-slate-900 border border-white/10 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500">
+              <option value="ALL">🌍 Worldwide (All Countries)</option>
+              <option value="United States">🇺🇸 United States</option>
+              <option value="United Kingdom">🇬🇧 United Kingdom</option>
+              <option value="Canada">🇨🇦 Canada</option>
+              <option value="Australia">🇦🇺 Australia</option>
+              <option value="Kenya">🇰🇪 Kenya</option>
+              <option value="Nigeria">🇳🇬 Nigeria</option>
+              <option value="Philippines">🇵🇭 Philippines</option>
+              <option value="Germany">🇩🇪 Germany</option>
+              <option value="Uganda">🇺🇬 Uganda</option>
+              <option value="South Africa">🇿🇦 South Africa</option>
+              <option value="India">🇮🇳 India</option>
+              <option value="Ghana">🇬🇭 Ghana</option>
+            </select>
 
             <!-- Multi-Page Scan Triggers -->
             <button onclick="syncOnlineUsers(100, 4)" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 transition" title="Scan first 100 online users">

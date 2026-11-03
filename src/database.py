@@ -536,6 +536,23 @@ async def get_likes(
         return result
 
 
+async def get_matches(limit: int = 100) -> List[Dict[str, Any]]:
+    """Retrieve confirmed mutual matches verified on Mingle2."""
+    query = """
+        SELECT * FROM likes_queue
+        WHERE verification_details LIKE '%MUTUAL MATCH%'
+           OR verification_details LIKE '%match%'
+           OR verification_details LIKE '%Confirmed%'
+           OR verification_status = 'VERIFIED'
+        ORDER BY id DESC LIMIT ?
+    """
+    async with aiosqlite.connect(settings.db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(query, (limit,))
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
 async def get_like_by_user_id(user_id: str) -> Optional[Dict[str, Any]]:
     """Fetch specific user record."""
     async with aiosqlite.connect(settings.db_path) as db:

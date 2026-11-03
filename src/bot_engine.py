@@ -77,11 +77,13 @@ async def dismiss_page_overlays(page: Page) -> None:
                 try { b.click(); } catch(e) {}
             });
 
-            // Remove blocking backdrop/overlays
+            // Remove blocking backdrop/overlays, SimpleModal containers, and ad interstitials
             document.querySelectorAll(
                 'iframe[id*="google"], div[class*="vignette"], #google_vignette, ins.adsbygoogle, div[id*="aswift"], ' +
-                '.simplemodal-overlay, #osx-overlay, .modal-backdrop, ' +
-                '#onetrust-banner-sdk, #onetrust-consent-sdk'
+                '.simplemodal-overlay, #osx-overlay, .modal-backdrop, .simplemodal-container, #simplemodal-container, ' +
+                '#mingleplus-benefits-modal-container, [id*="benefits"], [class*="benefits-modal"], ' +
+                '[class*="FIOnDemandWrapper"], [id*="FIOnDemandWrapper"], #FIHeaderKickInner, ' +
+                '#unlock-hopped-country-modal-inner-container, #onetrust-banner-sdk, #onetrust-consent-sdk'
             ).forEach(el => el.remove());
 
             try {
@@ -1265,8 +1267,9 @@ class Mingle2BotEngine:
                             current_step=f"Liking back candidate {idx+1}/{limit}: '{name}'..."
                         )
 
-                    # Perform like rating via native button click (executes Google reCAPTCHA Enterprise and submits Rails form)
+                    # Clean modal overlays and perform like rating via native button click (reCAPTCHA Enterprise)
                     click_res = await page.evaluate(r"""() => {
+                        document.querySelectorAll('#osx-overlay, .simplemodal-overlay, #simplemodal-container, .simplemodal-container, #mingleplus-benefits-modal-container, [id*="benefits"], [class*="benefits-modal"]').forEach(e => e.remove());
                         const btn = document.querySelector('.rate-yes-btn form button, .rate-yes-btn button');
                         if (!btn) return false;
                         btn.click();
@@ -1351,10 +1354,12 @@ class Mingle2BotEngine:
                             if curr_badge and curr_badge != initial_badge:
                                 await self._log("SUCCESS", f"Likes count reduced to: {curr_badge}!")
                         else:
-                            # Check if daily match limit reached
+                            # Check if daily match limit reached (only if candidate form is absent)
                             limit_reached = await page.evaluate(r"""() => {
+                                const hasForm = !!document.querySelector('.rate-yes-btn form, .rate-yes-btn button');
+                                if (hasForm) return false;
                                 const bodyText = document.body.innerText.toLowerCase();
-                                return bodyText.includes('want more matches') || bodyText.includes('daily limit') || bodyText.includes('reached your limit');
+                                return bodyText.includes('daily limit') || bodyText.includes('reached your limit') || bodyText.includes('out of matches');
                             }""")
                             if limit_reached:
                                 await self._log("WARN", f"Mingle2 daily swipe/match limit reached for free account. Pausing auto-like.")
@@ -1378,6 +1383,90 @@ class Mingle2BotEngine:
                 except Exception:
                     pass
                 return {"success": False, "count": len(liked_users), "error": str(e)}
+
+    async def fetch_your_matches(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Crawls https://mingle2.com/mutual_match/your_matches to retrieve all
+        real confirmed mutual matches from Mingle2.
+        Saves/updates them into the database with is_match=True and verification_status='VERIFIED'.
+        """
+        async with self._lock:
+            await self._log("INFO", "Syncing confirmed mutual matches from Mingle2 (your_matches)...")
+            context = await self.get_context()
+            page = await context.new_page()
+            try:
+                await page.goto("https://mingle2.com/mutual_match/your_matches", wait_until="commit", timeout=25000)
+                await asyncio.sleep(2)
+                await dismiss_page_overlays(page)
+
+                matches_data = await page.evaluate(r"""() => {
+                    const results = [];
+                    const cards = document.querySelectorAll('.user-gallery-item, .match-item, div[id^="user-"], .card');
+                    cards.forEach(c => {
+                        if (c.classList.contains('ads-item')) return;
+                        const link = c.querySelector('a[href*="/user/view/"], a[href*="/users/view/"]');
+                        if (!link) return;
+                        const m = link.href.match(/(?:users\/view|user\/view)\/(\d+)/);
+                        if (!m) return;
+                        const uid = m[1];
+
+                        const nameEl = c.querySelector('.display-name, .username, strong, h3, h4');
+                        const username = nameEl ? nameEl.innerText.trim() : `User ${uid}`;
+
+                        const img = c.querySelector('img.user_thumbnail, img');
+                        const avatar = img ? (img.getAttribute('data-src') || img.src) : '';
+
+                        const metaEl = c.querySelector('.location, .meta, .gender-and-age');
+                        const details = metaEl ? metaEl.innerText.replace(/\s+/g, ' ').trim() : '';
+
+                        results.push({
+                            user_id: uid,
+                            username: username,
+                            profile_url: `https://mingle2.com/users/view/${uid}`,
+                            avatar_url: avatar,
+                            age_location: details,
+                            is_match: true,
+                            status: "COMPLETED",
+                            verification_status: "VERIFIED",
+                            verification_details: "Confirmed Mutual Match on Mingle2"
+                        });
+                    });
+                    return results;
+                }""")
+
+                await page.close()
+
+                now = datetime.now(timezone.utc)
+                for m in matches_data:
+                    uid = m["user_id"]
+                    uname = m["username"]
+                    await database.add_or_get_liker(
+                        user_id=uid,
+                        username=uname,
+                        profile_url=m["profile_url"],
+                        avatar_img_url=m["avatar_url"],
+                        age_location=m["age_location"],
+                        detected_at=now,
+                        scheduled_like_at=now,
+                    )
+                    await database.update_status(
+                        uid,
+                        "COMPLETED",
+                        verification_status="VERIFIED",
+                        verification_details="Confirmed Mutual Match on Mingle2"
+                    )
+
+                await self._log("SUCCESS", f"Synced {len(matches_data)} verified mutual match(es) from Mingle2!")
+                return matches_data
+
+            except Exception as e:
+                await self._log("ERROR", f"Error fetching your_matches: {e}")
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+                return []
+
 
     async def verify_profile_on_platform(self, profile_id: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
@@ -1945,33 +2034,49 @@ class Mingle2BotEngine:
                     await page.close()
                     return await database.get_cached_search_results("SEARCH")
 
-                # Fill preferences if form fields present
+                # Configure search form for worldwide or country-specific search
                 try:
+                    await dismiss_page_overlays(page)
+
+                    # Default to distance=9999 (Any distance / Worldwide)
+                    dist = params.get("distance", 9999)
+                    for sel in ["#preferences_distance", "select[name='preferences[distance]']"]:
+                        if await page.locator(sel).count() > 0:
+                            try:
+                                await page.select_option(sel, value=str(dist))
+                            except Exception:
+                                pass
+
+                    country = params.get("country_id") or params.get("country")
+                    if country:
+                        for sel in ["#hopping-country", "select[name='preferences[hopped_country]']"]:
+                            if await page.locator(sel).count() > 0:
+                                try:
+                                    await page.select_option(sel, value=str(country))
+                                except Exception:
+                                    pass
+
                     looking_for = params.get("looking_for")
                     if looking_for:
                         val = looking_for.lower()
-                        # Looking for M/F select
-                        for sel in ["select[name='preferences[looking_for]']", "select#preferences_looking_for"]:
+                        for sel in ["select[name='preferences[seeking_as][]']", "#preferences_seeking_as", "select[name='preferences[looking_for]']"]:
                             if await page.locator(sel).count() > 0:
-                                await page.select_option(sel, value=val)
+                                try:
+                                    await page.select_option(sel, value=val)
+                                except Exception:
+                                    pass
 
                     age_from = params.get("age_from")
                     if age_from:
-                        for sel in ["select[name='preferences[age_from]']", "input[name='preferences[age_from]']"]:
+                        for sel in ["#preferences_start_age", "input[name='preferences[start_age]']"]:
                             if await page.locator(sel).count() > 0:
                                 await page.fill(sel, str(age_from))
 
                     age_to = params.get("age_to")
                     if age_to:
-                        for sel in ["select[name='preferences[age_to]']", "input[name='preferences[age_to]']"]:
+                        for sel in ["#preferences_end_age", "input[name='preferences[end_age]']"]:
                             if await page.locator(sel).count() > 0:
                                 await page.fill(sel, str(age_to))
-
-                    country = params.get("country_id")
-                    if country:
-                        for sel in ["select[name='preferences[country_id]']"]:
-                            if await page.locator(sel).count() > 0:
-                                await page.select_option(sel, value=str(country))
 
                     keywords = params.get("keywords")
                     if keywords:
@@ -1981,21 +2086,34 @@ class Mingle2BotEngine:
                 except Exception as fill_err:
                     logger.debug(f"Form fill non-fatal notice: {fill_err}")
 
-                # Submit search
-                submit_btn = page.locator("input[type='submit'][value*='Search'], button:has-text('Search'), input.btn-search").first
-                if await submit_btn.count() > 0:
-                    await submit_btn.click()
+                # Submit search form directly or via button
+                await dismiss_page_overlays(page)
+                submitted = await page.evaluate(r"""() => {
+                    const form = document.querySelector('form[action*="update_preferences"], form[action*="search"]');
+                    if (form) {
+                        form.submit();
+                        return true;
+                    }
+                    return false;
+                }""")
+                if submitted:
+                    await page.wait_for_load_state("domcontentloaded")
                 else:
-                    await page.keyboard.press("Enter")
+                    submit_btn = page.locator("input[type='submit'][value*='Search'], button:has-text('Search'), input.btn-search").first
+                    if await submit_btn.count() > 0:
+                        await submit_btn.click(force=True)
+                    else:
+                        await page.keyboard.press("Enter")
 
                 await asyncio.sleep(2.5)
+                await dismiss_page_overlays(page)
 
                 results = await page.evaluate(r"""
                     () => {
                         const items = [];
                         const seen = new Set();
                         const cards = document.querySelectorAll(
-                            '.search-result, .user-card, .profile-card, .user_item, div[id^="user_"], .card'
+                            '.user-gallery-item, .search-user-item, .search-user-gallery-item, .search-result, .user-card, div[id^="user-"], .card'
                         );
 
                         function parseCard(el) {
@@ -2082,7 +2200,7 @@ class Mingle2BotEngine:
                     pass
                 return await database.get_cached_search_results("SEARCH")
 
-    async def fetch_online_users(self, limit: int = 500, max_pages: int = 35) -> List[Dict[str, Any]]:
+    async def fetch_online_users(self, limit: int = 500, max_pages: int = 35, country: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Query currently active / online users on Mingle2 (https://mingle2.com/search/whos_online).
         Paginates across multiple search pages (?page=1, ?page=2, ...) to collect hundreds or thousands of online members.
@@ -2100,7 +2218,7 @@ class Mingle2BotEngine:
             try:
                 page_num = 1
                 while page_num <= max_pages and len(online_users) < limit:
-                    target_url = f"https://mingle2.com/search/whos_online?page={page_num}" if page_num > 1 else "https://mingle2.com/search/whos_online"
+                    target_url = f"https://mingle2.com/search/whos_online?preferences[distance]=9999&page={page_num}" if page_num > 1 else "https://mingle2.com/search/whos_online?preferences[distance]=9999"
                     target_url = strip_google_vignette(target_url)
 
                     try:
@@ -2136,12 +2254,21 @@ class Mingle2BotEngine:
                             }
 
                             const cards = document.querySelectorAll(
-                                '.search-user-gallery-item.search-user-item, .search-user-item, div[id^="user-"]'
+                                '.user-gallery-item, .search-user-gallery-item, .search-user-item, div[id^="user-"]'
                             );
 
                             cards.forEach(el => {
                                 if (el.classList.contains('ads-item')) return;
-                                const rawId = el.getAttribute('data-id') || (el.id ? el.id.replace('user-', '') : null);
+                                const link = el.querySelector('a[href*="/users/view/"], a[href*="/user/view/"]');
+                                let rawId = el.getAttribute('data-id') || (el.id ? el.id.replace('user-', '') : null);
+                                if (!rawId && link) {
+                                    const m = link.href.match(/(?:users\/view|user\/view)\/(\d+)/);
+                                    if (m) rawId = m[1];
+                                }
+                                const heart = el.querySelector('.heart-icon');
+                                if (!rawId && heart) {
+                                    rawId = heart.getAttribute('data-id');
+                                }
                                 if (!rawId || !/^\d+$/.test(rawId) || seenOnPage.has(rawId)) return;
                                 seenOnPage.add(rawId);
 

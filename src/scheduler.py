@@ -460,6 +460,10 @@ class BotScheduler:
         result = await self.engine.auto_like_mutual_matches(limit=limit, task_id=task_id)
         liked_count = result.get("count", 0)
         final_badge = result.get("final_badge", "updated")
+        try:
+            await self.engine.fetch_your_matches()
+        except Exception:
+            pass
 
         stats = await database.get_stats()
         await self._emit("stats_updated", stats)
@@ -508,7 +512,8 @@ class BotScheduler:
             await database.update_task_progress(task_id, pct, f"Liking online user {idx+1}/{total}: '{username}'...")
             await self._emit("task_updated", await database.get_task_by_id(task_id))
 
-            success, _ = await self.engine.like_user(u)
+            res = await self.engine.like_user(u)
+            success = res[0] if isinstance(res, tuple) else bool(res)
             if success:
                 liked_count += 1
             await asyncio.sleep(random.uniform(2.5, 5.0))
@@ -552,7 +557,8 @@ class BotScheduler:
             await database.update_task_progress(task_id, pct, f"Liking match {idx+1}/{total}: '{username}'...")
             await self._emit("task_updated", await database.get_task_by_id(task_id))
 
-            success, _ = await self.engine.like_user(u)
+            res = await self.engine.like_user(u)
+            success = res[0] if isinstance(res, tuple) else bool(res)
             if success:
                 liked_count += 1
             await asyncio.sleep(random.uniform(2.5, 5.0))
