@@ -181,7 +181,7 @@ function handleSocketEvent(payload) {
 
     case 'inbox_synced':
     case 'inbox_updated':
-      renderThreads(data);
+      renderThreads(data.threads || data);
       break;
 
     case 'online_synced':
@@ -738,23 +738,37 @@ async function syncAccount() {
 function renderAccount(profile) {
   if (!profile) return;
   const username = profile.username || 'Mingle2 User';
-  document.getElementById('metric-account-name').innerText = username;
-  document.getElementById('account-username').innerText = username;
-  document.getElementById('account-location').innerText = profile.location || 'Location Not Specified';
-  document.getElementById('account-id-badge').innerText = `ID: ${profile.user_id || 'my_account'}`;
-  document.getElementById('account-headline').innerText = profile.headline || 'No headline set.';
-  document.getElementById('account-bio').innerText = profile.about_me || 'No biography text found on profile.';
+  const mName = document.getElementById('metric-account-name');
+  if (mName) mName.innerText = username;
+  const aUser = document.getElementById('account-username');
+  if (aUser) aUser.innerText = username;
+  const aLoc = document.getElementById('account-location');
+  if (aLoc) aLoc.innerText = profile.location || 'Location Not Specified';
+  const aBadge = document.getElementById('account-id-badge');
+  if (aBadge) aBadge.innerText = `ID: ${profile.user_id || 'my_account'}`;
+  const aHead = document.getElementById('account-headline');
+  if (aHead) aHead.innerText = profile.headline || 'No headline set.';
+  const aBio = document.getElementById('account-bio');
+  if (aBio) aBio.innerText = profile.about_me || 'No biography text found on profile.';
+
+  const overviewStatus = document.getElementById('overview-account-status');
+  if (overviewStatus) overviewStatus.innerText = username;
 
   if (profile.avatar_url) {
-    document.getElementById('account-avatar').src = profile.avatar_url;
+    const avatarEl = document.getElementById('account-avatar');
+    if (avatarEl) avatarEl.src = profile.avatar_url;
+    const ovAvatar = document.getElementById('overview-account-avatar');
+    if (ovAvatar) ovAvatar.src = profile.avatar_url;
   }
 
-  // Photos
+  // Photos gallery
   const gallery = document.getElementById('account-photos-gallery');
   if (gallery) {
     if (profile.photos && profile.photos.length > 0) {
       gallery.innerHTML = profile.photos.map(p => `
-        <img src="${p}" alt="Photo" class="w-20 h-20 rounded-xl object-cover border border-white/10 hover:scale-105 transition shadow">
+        <a href="${p}" target="_blank" rel="noopener noreferrer" class="group relative block overflow-hidden rounded-xl border border-white/10 hover:border-purple-500/50 transition">
+          <img src="${p}" alt="Photo" class="w-20 h-20 rounded-xl object-cover group-hover:scale-110 transition duration-300 shadow">
+        </a>
       `).join('');
     } else {
       gallery.innerHTML = '<span class="text-xs text-slate-500">No additional photos uploaded.</span>';

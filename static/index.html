@@ -259,10 +259,13 @@
           </div>
 
           <!-- Item 2: Account -->
-          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
-            <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Account</span>
-            <span id="overview-account-status" class="text-xs font-bold text-slate-200 truncate block">Not Connected</span>
-            <span class="text-[10px] text-slate-500 block truncate" id="overview-account-sub">Credentials Hidden</span>
+          <div class="p-3 rounded-xl bg-slate-900/60 border border-white/5 flex items-center gap-3">
+            <img id="overview-account-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a855f7'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E" alt="Avatar" class="w-10 h-10 rounded-xl object-cover border border-purple-500/30 flex-shrink-0 bg-slate-800">
+            <div class="min-w-0 flex-1 space-y-0.5">
+              <span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Account</span>
+              <span id="overview-account-status" class="text-xs font-bold text-slate-200 truncate block">Not Connected</span>
+              <span class="text-[10px] text-slate-500 block truncate" id="overview-account-sub">Credentials Hidden</span>
+            </div>
           </div>
 
           <!-- Item 3: Session -->
@@ -517,7 +520,7 @@
         <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div class="md:col-span-4 flex flex-col items-center text-center p-6 rounded-2xl bg-slate-900/60 border border-white/5">
             <div class="relative">
-              <img id="account-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=250" alt="Avatar" class="w-32 h-32 rounded-2xl object-cover border-2 border-purple-500/40 shadow-xl shadow-purple-500/10">
+              <img id="account-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a855f7'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E" alt="Avatar" class="w-32 h-32 rounded-2xl object-cover border-2 border-purple-500/40 shadow-xl shadow-purple-500/10 bg-slate-800">
               <span class="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-slate-900" title="Active"></span>
             </div>
             <h3 id="account-username" class="text-lg font-bold text-white mt-4">Syncing Profile...</h3>

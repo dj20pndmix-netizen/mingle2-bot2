@@ -764,7 +764,7 @@ async def clear_logs() -> None:
 # ACCOUNT PROFILE
 # ============================================================================
 async def save_account_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Upsert account profile information."""
+    """Upsert account profile information and clean up dummy placeholder records."""
     now_str = datetime.now(timezone.utc).isoformat()
     user_id = str(profile_data.get("user_id", "my_account"))
     username = str(profile_data.get("username", "Mingle2 User"))
@@ -777,6 +777,13 @@ async def save_account_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
     stats_json = json.dumps(profile_data.get("stats", {}))
 
     async with aiosqlite.connect(settings.db_path) as db:
+        # If saving a real profile, remove obsolete placeholder rows
+        if user_id not in ("my_account", "my_profile", "not_synced", "guest") and username not in ("Mingle2 User", "Not Synced Yet", ""):
+            await db.execute(
+                "DELETE FROM account_profile WHERE user_id IN ('my_account', 'my_profile', 'not_synced', 'guest') OR username IN ('Mingle2 User', '')"
+            )
+            await db.commit()
+
         await db.execute(
             """
             INSERT INTO account_profile (
@@ -802,10 +809,19 @@ async def save_account_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def get_account_profile() -> Optional[Dict[str, Any]]:
-    """Retrieve saved account profile."""
+    """Retrieve saved account profile, prioritizing real synchronized records over dummy placeholders."""
     async with aiosqlite.connect(settings.db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM account_profile ORDER BY updated_at DESC LIMIT 1")
+        cursor = await db.execute("""
+            SELECT * FROM account_profile
+            ORDER BY
+              CASE WHEN user_id NOT IN ('my_account', 'my_profile', 'not_synced', 'guest') AND avatar_url != '' THEN 0
+                   WHEN avatar_url != '' THEN 1
+                   WHEN username NOT IN ('Mingle2 User', '', 'Not Synced Yet') THEN 2
+                   ELSE 3 END,
+              updated_at DESC
+            LIMIT 1
+        """)
         row = await cursor.fetchone()
         if not row:
             return None

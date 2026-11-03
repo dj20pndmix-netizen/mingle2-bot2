@@ -795,63 +795,16 @@ class Mingle2BotEngine:
 
     async def sync_account_profile(self) -> Dict[str, Any]:
         """
-        Extracts user profile details from the authenticated session (or header DOM)
+        Extracts user profile details from the authenticated session
         and persists them via database.save_account_profile.
         Ensures NO passwords, cookies, or authorization tokens are stored.
         """
-        profile_data: Dict[str, Any] = {
-            "user_id": "my_account",
-            "username": "Mingle2 User",
-            "headline": "",
-            "about_me": "",
-            "age": None,
-            "location": "",
-            "avatar_url": "",
-            "photos": [],
-            "stats": {},
-        }
         try:
-            if self._context and self._context.pages:
-                page = self._context.pages[0]
-                extracted = await page.evaluate(r"""
-                    () => {
-                        const data = {};
-                        const userLink = document.querySelector('a[href*="/user/my_profile"], a[href*="/users/view/"], .user-menu .username, .user-avatar a');
-                        if (userLink) {
-                            const href = userLink.getAttribute('href') || '';
-                            const match = href.match(/\/users?\/view\/([^\/?#]+)/i);
-                            if (match) data.user_id = match[1];
-                            const text = userLink.innerText.trim();
-                            if (text) data.username = text;
-                        }
-                        const nameEl = document.querySelector('.user-menu .display-name, #header-user-menu .username, .nav-item-user .name');
-                        if (nameEl && nameEl.innerText.trim()) {
-                            data.username = nameEl.innerText.trim();
-                        }
-                        const avatarImg = document.querySelector('.user-avatar img, img.user_thumbnail, #header-user-menu img');
-                        if (avatarImg) {
-                            data.avatar_url = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || '';
-                        }
-                        return data;
-                    }
-                """)
-                if extracted and isinstance(extracted, dict):
-                    if extracted.get("user_id"):
-                        profile_data["user_id"] = extracted["user_id"]
-                    if extracted.get("username"):
-                        profile_data["username"] = extracted["username"]
-                    if extracted.get("avatar_url"):
-                        profile_data["avatar_url"] = extracted["avatar_url"]
+            return await self.fetch_account_profile()
         except Exception as e:
-            logger.debug(f"sync_account_profile extraction note: {e}")
-
-        # Persist to database
-        try:
-            saved = await database.save_account_profile(profile_data)
-            return saved or profile_data
-        except Exception as e:
-            logger.warning(f"Failed to persist account profile: {e}")
-            return profile_data
+            logger.warning(f"sync_account_profile error: {e}")
+            cached = await database.get_account_profile()
+            return cached or {"user_id": "my_account", "username": "Mingle2 User"}
 
     async def get_current_account_state(self) -> Dict[str, Any]:
         """
@@ -1680,11 +1633,11 @@ class Mingle2BotEngine:
     async def fetch_account_profile(self) -> Dict[str, Any]:
         """
         Navigate to Mingle2 user profile (/user/my_profile) and extract user's
-        name, age, location, headline, about_me, avatar, photos, and statistics.
+        authoritative name, age, location, headline, about_me, avatar, photos, and statistics.
         Saves result in database and returns profile dictionary.
         """
         async with self._lock:
-            await self._log("INFO", "Syncing Mingle2 Account Profile (/user/my_profile)...")
+            await self._log("INFO", "Syncing authoritative Mingle2 Account Profile (/user/my_profile)...")
             context = await self.get_context()
             page = await context.new_page()
 
@@ -1697,58 +1650,159 @@ class Mingle2BotEngine:
                     self.session_status = "LOGGED_OUT"
                     await self._log("WARN", "Cannot sync account: Not logged into Mingle2.")
                     await page.close()
-                    # Return cached profile if exists
                     cached = await database.get_account_profile()
                     return cached or {"user_id": "guest", "username": "Not Logged In", "status": "LOGGED_OUT"}
 
                 self.session_status = "LOGGED_IN"
                 await asyncio.sleep(1.5)
+                await dismiss_page_overlays(page)
 
                 profile_data = await page.evaluate(r"""
                     () => {
                         const url = window.location.href;
-                        const usernameEl = document.querySelector('h1.username, .profile-username, .user-name, h1, .name');
-                        const username = usernameEl ? usernameEl.innerText.trim() : 'Mingle2 Member';
 
-                        const headlineEl = document.querySelector('.headline, .profile-headline, h2.headline, .tagline');
-                        const headline = headlineEl ? headlineEl.innerText.trim() : '';
+                        // 1. Authoritative User ID
+                        let userId = '';
+                        const viewLink = document.querySelector('a[href*="/users/view/"]');
+                        if (viewLink) {
+                            const m = viewLink.getAttribute('href').match(/\/users\/view\/(\d+)/i);
+                            if (m) userId = m[1];
+                        }
+                        if (!userId) {
+                            const editLink = document.querySelector('a[href*="/user/edit_photos"], a[href*="/user/edit_profile"]');
+                            const m = (editLink ? editLink.getAttribute('href') : '').match(/(\d+)/);
+                            if (m) userId = m[1];
+                        }
+                        if (!userId) {
+                            const idMatch = url.match(/(?:users?\/view|profile|my_profile)\/([a-zA-Z0-9_-]+)/i);
+                            if (idMatch && idMatch[1] !== 'my_profile') userId = idMatch[1];
+                        }
 
-                        const aboutMeEl = document.querySelector('.about-me, #about_me, .profile-bio, .user-description, .bio-content');
-                        const aboutMe = aboutMeEl ? aboutMeEl.innerText.trim() : '';
+                        // 2. Real Username (avoid matching empty h1 tags)
+                        let username = '';
+                        const userEl = document.querySelector('.user_information .username, .username[itemprop="name"], .username');
+                        if (userEl && userEl.innerText.trim()) {
+                            username = userEl.innerText.trim();
+                        }
+                        if (!username) {
+                            const titleMatch = document.title.match(/^([^:\-|]+):/);
+                            if (titleMatch) username = titleMatch[1].trim();
+                        }
 
-                        const metaEl = document.querySelector('.user_details, .age-location, .profile-meta, .details');
-                        const ageLoc = metaEl ? metaEl.innerText.replace(/\s+/g, ' ').trim() : '';
+                        // 3. Headline
+                        let headline = '';
+                        const headlineEl = document.querySelector('.user_information .headline, .headline, .profile-headline');
+                        if (headlineEl) {
+                            headline = headlineEl.innerText.trim().replace(/^["']|["']$/g, '');
+                        }
 
+                        // 4. About Me / Bio
+                        let aboutMe = '';
+                        const descEls = document.querySelectorAll('div.description, .about-me, #about_me, .profile-bio');
+                        for (const d of descEls) {
+                            const txt = d.innerText.trim();
+                            if (txt && !txt.includes('Break the ice') && !txt.includes('daily limit') && !txt.includes('gifted') && !txt.includes('MinglePlus') && !txt.includes("We won't tell")) {
+                                aboutMe = txt;
+                                break;
+                            }
+                        }
+
+                        // 5. Age & Location
                         let age = null;
-                        const ageMatch = ageLoc.match(/(\d{2})/);
-                        if (ageMatch) age = parseInt(ageMatch[1]);
+                        let location = '';
+                        const summaryEl = document.querySelector('.user_summary, .user_summary_container, .home-country, .user_details');
+                        if (summaryEl) {
+                            const text = summaryEl.innerText;
+                            const mAge = text.match(/(\d+)\s*year\s*old/i);
+                            if (mAge) age = parseInt(mAge[1]);
 
-                        const avatarImg = document.querySelector('.profile-avatar img, .avatar img, #profile_pic, img.user-pic, img[src*="/photos/"]');
-                        const avatarUrl = avatarImg ? (avatarImg.getAttribute('data-src') || avatarImg.src) : '';
+                            const lines = text.split('
+').map(l => l.trim().replace(/,$/, '')).filter(Boolean);
+                            for (let i = 0; i < lines.length; i++) {
+                                if (lines[i].toLowerCase() === 'from' && i + 1 < lines.length) {
+                                    const parts = [];
+                                    for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+                                        if (lines[j].toLowerCase().includes('looking') || lines[j].toLowerCase().includes('online')) break;
+                                        parts.push(lines[j]);
+                                    }
+                                    location = parts.join(', ');
+                                    break;
+                                }
+                            }
+                            if (!location) {
+                                const locSpan = summaryEl.querySelector('span');
+                                if (locSpan && locSpan.innerText.trim()) location = locSpan.innerText.trim();
+                            }
+                        }
 
-                        const photoEls = Array.from(document.querySelectorAll('.photo-gallery img, .photos img, a[href*="/photos/"] img'));
-                        const photos = photoEls.map(img => img.getAttribute('data-src') || img.src).filter(Boolean);
+                        // 6. Real Avatar / Main Portrait
+                        let avatarUrl = '';
+                        const portrait = document.querySelector('#user_portrait, img.portrait, .user_profile_portrait img, img[itemprop="image"]');
+                        if (portrait) {
+                            avatarUrl = portrait.getAttribute('src') || portrait.getAttribute('data-src') || '';
+                        }
+                        if (!avatarUrl) {
+                            const avatarThumb = document.querySelector('.user-avatar-container img, .user_thumbnail.user-avatar, img.user_thumbnail');
+                            if (avatarThumb) avatarUrl = avatarThumb.getAttribute('src') || avatarThumb.getAttribute('data-src') || '';
+                        }
 
-                        const idMatch = url.match(/(?:user\/view|profile|my_profile)\/([a-zA-Z0-9_-]+)/i);
-                        const userId = idMatch ? idMatch[1] : 'my_profile';
+                        // 7. Complete Real Photos List
+                        const photos = [];
+                        if (avatarUrl) photos.push(avatarUrl);
+                        const thumbImgs = document.querySelectorAll('.user_thumbnail_container img, a.user_thumbnail img, .user-photos img, img.user_thumbnail, #user-portrait-container img');
+                        thumbImgs.forEach(img => {
+                            const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+                            if (src && src.includes('/images/users/') && !photos.includes(src)) {
+                                photos.push(src);
+                            }
+                        });
+
+                        // 8. Popularity / Stats
+                        let popularity = '';
+                        const popMatch = document.body.innerText.match(/Popularity Meter:\s*(\d+\/\d+)/i);
+                        if (popMatch) popularity = popMatch[1];
 
                         return {
-                            user_id: userId,
-                            username: username,
+                            user_id: userId || 'my_account',
+                            username: username || 'Mingle2 Member',
                             headline: headline,
                             about_me: aboutMe,
                             age: age,
-                            location: ageLoc,
+                            location: location,
                             avatar_url: avatarUrl,
                             photos: photos,
-                            stats: { synced: true }
+                            stats: { popularity: popularity, synced: true }
                         };
                     }
                 """)
 
+                # Also crawl edit_photos for high-resolution images
+                try:
+                    await page.goto("https://mingle2.com/user/edit_photos", wait_until="domcontentloaded", timeout=15000)
+                    extra_photos = await page.evaluate(r"""
+                        () => {
+                            const found = [];
+                            const imgs = document.querySelectorAll('img');
+                            imgs.forEach(i => {
+                                const src = i.getAttribute('src') || i.getAttribute('data-src') || '';
+                                if (src && src.includes('/images/users/')) found.push(src);
+                            });
+                            return found;
+                        }
+                    """)
+                    if extra_photos:
+                        for ep in extra_photos:
+                            if ep not in profile_data["photos"]:
+                                profile_data["photos"].append(ep)
+                            if not profile_data.get("avatar_url") or "small_thumb" in profile_data["avatar_url"]:
+                                if "medium_large" in ep or (not "_thumb" in ep and ".jpg" in ep):
+                                    profile_data["avatar_url"] = ep
+                except Exception as ep_err:
+                    logger.debug(f"edit_photos check note: {ep_err}")
+
                 await page.close()
                 saved = await database.save_account_profile(profile_data)
-                await self._log("SUCCESS", f"Account profile successfully synced for '{saved.get('username')}'.")
+                await self._log("SUCCESS", f"Authoritative account profile synced for '{saved.get('username')}' (ID: {saved.get('user_id')}) with {len(saved.get('photos', []))} photo(s).")
                 return saved
 
             except Exception as e:

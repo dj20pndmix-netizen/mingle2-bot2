@@ -104,9 +104,10 @@ async def lifespan(app: FastAPI):
                 if is_valid:
                     await database.add_log("SUCCESS", "Startup verification: Authenticated Mingle2 session is ACTIVE and CONNECTED!")
                     try:
-                        await scheduler.engine.sync_account_profile()
-                    except Exception:
-                        pass
+                        profile = await scheduler.engine.fetch_account_profile()
+                        await manager.broadcast({"event": "account_synced", "data": profile})
+                    except Exception as sync_err:
+                        logger.debug(f"Startup profile sync note: {sync_err}")
                 else:
                     await database.add_log("INFO", "Startup verification: No active session detected. Authentication required.")
             except Exception as ex:
@@ -177,7 +178,7 @@ class SearchRequest(BaseModel):
 
 
 class CreateTaskRequest(BaseModel):
-    task_type: str = Field(..., description="AUTO_LIKE_BACK, LIKE_ONLINE_USERS, BULK_SEARCH_AND_LIKE, AUTO_CHECK_INBOX, SYNC_FULL_ACCOUNT")
+    task_type: str = Field(..., description="AUTO_LIKE_BACK, AUTO_LIKE_MUTUAL_MATCH, LIKE_ONLINE_USERS, BULK_SEARCH_AND_LIKE, AUTO_CHECK_INBOX, SYNC_FULL_ACCOUNT")
     params: Optional[Dict[str, Any]] = None
     total_steps: int = Field(1, ge=1)
 
