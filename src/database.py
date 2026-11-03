@@ -1005,14 +1005,15 @@ async def create_task(task_type: str, params: Optional[Dict[str, Any]] = None, t
         return res
 
 
-async def get_tasks(status: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+async def get_tasks(status: Optional[str] = None, limit: int = 50, order_asc: bool = False) -> List[Dict[str, Any]]:
     """Retrieve automation tasks list."""
     query = "SELECT * FROM tasks_queue WHERE 1=1"
     params: List[Any] = []
     if status and status.upper() != "ALL":
         query += " AND status = ?"
         params.append(status.upper())
-    query += " ORDER BY id DESC LIMIT ?"
+    order_dir = "ASC" if order_asc else "DESC"
+    query += f" ORDER BY id {order_dir} LIMIT ?"
     params.append(limit)
 
     async with aiosqlite.connect(settings.db_path) as db:
@@ -1197,3 +1198,13 @@ async def save_stored_setting(key: str, value: Any) -> None:
             (key, val_str),
         )
         await db.commit()
+
+
+async def recover_orphaned_tasks() -> int:
+    """Reset any tasks left in RUNNING status back to PENDING after a server restart."""
+    async with aiosqlite.connect(settings.db_path) as db:
+        cursor = await db.execute(
+            "UPDATE tasks_queue SET status = 'PENDING', current_step = 'Queued in task manager (resumed)' WHERE status = 'RUNNING'"
+        )
+        await db.commit()
+        return cursor.rowcount

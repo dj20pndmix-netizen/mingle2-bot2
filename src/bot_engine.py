@@ -1904,8 +1904,7 @@ class Mingle2BotEngine:
                             const mAge = text.match(/(\d+)\s*year\s*old/i);
                             if (mAge) age = parseInt(mAge[1]);
 
-                            const lines = text.split('
-').map(l => l.trim().replace(/,$/, '')).filter(Boolean);
+                            const lines = text.split('\n').map(l => l.trim().replace(/,$/, '')).filter(Boolean);
                             for (let i = 0; i < lines.length; i++) {
                                 if (lines[i].toLowerCase() === 'from' && i + 1 < lines.length) {
                                     const parts = [];
@@ -2533,7 +2532,6 @@ class Mingle2BotEngine:
                                 if (/\b(?:female|woman|girl|f)\b/i.test(ageLoc)) gender = 'F';
                                 else if (/\b(?:male|man|guy|m)\b/i.test(ageLoc)) gender = 'M';
 
-                                const heart = el.querySelector('.heart-icon');
                                 const isAlreadyLiked = heart ? heart.classList.contains('selected') : false;
 
                                 items.push({

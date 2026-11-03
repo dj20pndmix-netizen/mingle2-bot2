@@ -55,6 +55,14 @@ class BotScheduler:
         await self._on_engine_log("SUCCESS", "Mingle2 automation bot started.")
         await self._emit("state_change", {"state": self.state})
 
+        # Automatically recover any tasks left orphaned in RUNNING status from previous restart
+        try:
+            recovered_count = await database.recover_orphaned_tasks()
+            if recovered_count > 0:
+                await self._on_engine_log("INFO", f"Recovered {recovered_count} interrupted task(s) back to PENDING.")
+        except Exception as rec_err:
+            logger.debug(f"Task recovery notice: {rec_err}")
+
         if not self._scan_task or self._scan_task.done():
             self._scan_task = asyncio.create_task(self._scan_loop())
         if not self._exec_task or self._exec_task.done():
@@ -381,8 +389,8 @@ class BotScheduler:
                     await asyncio.sleep(5)
                     continue
 
-                # Query pending task
-                pending_tasks = await database.get_tasks(status="PENDING", limit=1)
+                # Query pending task (FIFO: oldest pending task first)
+                pending_tasks = await database.get_tasks(status="PENDING", limit=1, order_asc=True)
                 if pending_tasks:
                     task = pending_tasks[0]
                     await self._execute_task(task)
