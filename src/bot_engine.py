@@ -1401,22 +1401,21 @@ class Mingle2BotEngine:
 
                 matches_data = await page.evaluate(r"""() => {
                     const results = [];
-                    const cards = document.querySelectorAll('.user-gallery-item, .match-item, div[id^="user-"], .card');
-                    cards.forEach(c => {
-                        if (c.classList.contains('ads-item')) return;
-                        const link = c.querySelector('a[href*="/user/view/"], a[href*="/users/view/"]');
-                        if (!link) return;
-                        const m = link.href.match(/(?:users\/view|user\/view)\/(\d+)/);
-                        if (!m) return;
-                        const uid = m[1];
+                    const seen = new Set();
+                    const links = Array.from(document.querySelectorAll('a[href*="/users/view/"], a[href*="/user/view/"]'));
+                    links.forEach(a => {
+                        const username = a.innerText.trim();
+                        if (!username) return;
+                        const href = a.href || '';
+                        const m = href.match(/view\/(\d+)/);
+                        const uid = m ? m[1] : href.split('/').filter(Boolean).pop().split('?')[0];
+                        if (!uid || !/^\d+$/.test(uid) || seen.has(uid)) return;
+                        seen.add(uid);
 
-                        const nameEl = c.querySelector('.display-name, .username, strong, h3, h4');
-                        const username = nameEl ? nameEl.innerText.trim() : `User ${uid}`;
-
-                        const img = c.querySelector('img.user_thumbnail, img');
+                        const card = a.closest('.user-gallery-item, .card, div[id^="user-"]') || a.parentElement.parentElement;
+                        const img = card ? card.querySelector('img.user_thumbnail, img') : null;
                         const avatar = img ? (img.getAttribute('data-src') || img.src) : '';
-
-                        const metaEl = c.querySelector('.location, .meta, .gender-and-age');
+                        const metaEl = card ? card.querySelector('.location, .meta, .gender-and-age') : null;
                         const details = metaEl ? metaEl.innerText.replace(/\s+/g, ' ').trim() : '';
 
                         results.push({

@@ -589,7 +589,6 @@ async def send_message(user_id: str, req: SendMessageRequest):
 # MUTUAL MATCHES & LIKERS QUEUE
 # ============================================================================
 @app.get("/api/queue")
-@app.get("/api/matches")
 async def get_queue(
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
@@ -690,6 +689,7 @@ async def get_cached_search():
 
 
 @app.get("/api/matches")
+@app.get("/api/mutual-matches")
 async def get_matches_endpoint(limit: int = Query(100, ge=1, le=500)):
     """Retrieve verified mutual matches from Mingle2."""
     matches = await database.get_matches(limit=limit)
@@ -697,6 +697,7 @@ async def get_matches_endpoint(limit: int = Query(100, ge=1, le=500)):
 
 
 @app.post("/api/matches/sync")
+@app.post("/api/mutual-matches/sync")
 async def sync_matches_endpoint():
     """Sync confirmed mutual matches directly from Mingle2's your_matches page."""
     matches = await scheduler.engine.fetch_your_matches()
