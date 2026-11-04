@@ -1248,7 +1248,7 @@ class Mingle2BotEngine:
                             const modals = Array.from(document.querySelectorAll('.remodal, .modal, [class*="match"], #send-msg-modal-inner-container')).filter(
                                 m => window.getComputedStyle(m).display !== 'none' && (m.innerText || '').length > 0
                             );
-                            const text = modals.map(m => m.innerText.replace(/\s+/g, ' ').trim()).join(' ');
+                            const text = modals.map(m => (m && m.innerText ? m.innerText : '').replace(/\s+/g, ' ').trim()).join(' ');
                             const isMatch = text.toLowerCase().includes('mutual match') || text.toLowerCase().includes("it's a match") || text.toLowerCase().includes('break the ice');
                             return { isMatch, text };
                         }""")
@@ -1315,7 +1315,7 @@ class Mingle2BotEngine:
                             limit_reached = await page.evaluate(r"""() => {
                                 const hasForm = !!document.querySelector('.rate-yes-btn form, .rate-yes-btn button');
                                 if (hasForm) return false;
-                                const bodyText = document.body.innerText.toLowerCase();
+                                const bodyText = (document.body && document.body.innerText ? document.body.innerText : '').toLowerCase();
                                 return bodyText.includes('daily limit') || bodyText.includes('reached your limit') || bodyText.includes('out of matches');
                             }""")
                             if limit_reached:
@@ -1501,10 +1501,10 @@ class Mingle2BotEngine:
                     pass
                 return False, f"Verification failed: {e}", None
 
-    async def rate_user_direct(self, user_id: str, username: str = "User") -> Tuple[bool, str, Dict[str, Any]]:
+    async def _rate_user_direct_unlocked(self, user_id: str, username: str = "User") -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Directly likes a user on Mingle2 via the official POST /mutual_match/rate_only endpoint.
-        Returns (success: bool, message: str, details: dict)
+        Directly likes a user on Mingle2 without acquiring self._lock (re-entrant safe).
+        Guaranteed to return a 3-tuple (success: bool, message: str, details: Dict[str, Any]).
         """
         clean_uid = str(user_id).strip()
         if not clean_uid:
@@ -1515,89 +1515,95 @@ class Mingle2BotEngine:
             await asyncio.sleep(0.8)
             return True, f"[TEST_MODE] Simulated direct like for '{username}'", {"success": True, "is_mutual": False}
 
-        async with self._lock:
-            await self._log("INFO", f"Sending direct Like to Mingle2 for '{username}' (ID: {clean_uid})...")
-            context = await self.get_context()
-            page = await context.new_page()
+        await self._log("INFO", f"Sending direct Like to Mingle2 for '{username}' (ID: {clean_uid})...")
+        context = await self.get_context()
+        page = await context.new_page()
 
-            try:
-                # Use online search page to ensure active session and fresh CSRF token
-                await page.goto("https://mingle2.com/search/whos_online", wait_until="domcontentloaded", timeout=25000)
-                await asyncio.sleep(1.0)
-                await dismiss_page_overlays(page)
+        try:
+            # Use online search page to ensure active session and fresh CSRF token
+            await page.goto("https://mingle2.com/search/whos_online", wait_until="domcontentloaded", timeout=25000)
+            await asyncio.sleep(1.0)
+            await dismiss_page_overlays(page)
 
-                current_url = strip_google_vignette(page.url.lower())
-                if "/user/login" in current_url:
-                    self.session_status = "LOGGED_OUT"
-                    await page.close()
-                    return False, "Not authenticated on Mingle2", {"success": False}
-
-                # Execute rate_only POST
-                res = await page.evaluate(r"""async (uid) => {
-                    try {
-                        const token = document.querySelector('meta[name="csrf-token"]')?.content;
-                        const resp = await fetch('https://mingle2.com/mutual_match/rate_only', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                                'X-CSRF-Token': token || '',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body: `id=${uid}&rating=Y`
-                        });
-                        const data = await resp.json();
-                        return { status: resp.status, data: data };
-                    } catch (e) {
-                        return { status: 0, error: e.toString() };
-                    }
-                }""", clean_uid)
-
+            current_url = strip_google_vignette(page.url.lower())
+            if "/user/login" in current_url:
+                self.session_status = "LOGGED_OUT"
                 await page.close()
+                return False, "Not authenticated on Mingle2", {"success": False}
 
-                status = res.get("status", 0)
-                data = res.get("data", {})
-                is_success = (status == 200 and data.get("success", False))
-                is_mutual = bool(data.get("is_mutual", False))
-                conn_id = data.get("mutual_match_connection_id")
+            # Execute rate_only POST
+            res = await page.evaluate(r"""async (uid) => {
+                try {
+                    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                    const resp = await fetch('https://mingle2.com/mutual_match/rate_only', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'X-CSRF-Token': token || '',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: `id=${uid}&rating=Y`
+                    });
+                    const data = await resp.json();
+                    return { status: resp.status, data: data };
+                } catch (e) {
+                    return { status: 0, error: e.toString() };
+                }
+            }""", clean_uid)
 
-                now = datetime.now(timezone.utc)
-                if is_success:
-                    # Update database records
-                    await database.add_or_get_liker(
-                        user_id=clean_uid,
-                        username=username,
-                        profile_url=f"https://mingle2.com/users/view/{clean_uid}",
-                        avatar_img_url="",
-                        age_location="",
-                        detected_at=now,
-                        scheduled_like_at=now,
-                    )
-                    verif_details = f"Direct like confirmed on Mingle2{' (🎉 MUTUAL MATCH!)' if is_mutual else ''}"
-                    await database.update_status(
-                        clean_uid,
-                        "COMPLETED",
-                        verification_status="VERIFIED",
-                        verification_details=verif_details
-                    )
+            await page.close()
 
-                    if is_mutual:
-                        await self._log("SUCCESS", f"🎉 IT'S A MATCH! You and '{username}' (ID: {clean_uid}) are a match! Connection: {conn_id}")
-                        return True, f"Mutual Match confirmed with '{username}'!", {"is_mutual": True, "connection_id": conn_id}
-                    else:
-                        await self._log("SUCCESS", f"Liked '{username}' (ID: {clean_uid}) on Mingle2 ✓ (Notification delivered to candidate)")
-                        return True, f"Successfully liked '{username}' on Mingle2", {"is_mutual": False}
+            status = res.get("status", 0) if isinstance(res, dict) else 0
+            data = res.get("data", {}) if isinstance(res, dict) else {}
+            is_success = (status == 200 and isinstance(data, dict) and data.get("success", False))
+            is_mutual = bool(data.get("is_mutual", False)) if isinstance(data, dict) else False
+            conn_id = data.get("mutual_match_connection_id") if isinstance(data, dict) else None
+
+            now = datetime.now(timezone.utc)
+            if is_success:
+                # Update database records
+                await database.add_or_get_liker(
+                    user_id=clean_uid,
+                    username=username,
+                    profile_url=f"https://mingle2.com/users/view/{clean_uid}",
+                    avatar_img_url="",
+                    age_location="",
+                    detected_at=now,
+                    scheduled_like_at=now,
+                )
+                verif_details = f"Direct like confirmed on Mingle2{' (🎉 MUTUAL MATCH!)' if is_mutual else ''}"
+                await database.update_status(
+                    clean_uid,
+                    "COMPLETED",
+                    verification_status="VERIFIED",
+                    verification_details=verif_details
+                )
+
+                if is_mutual:
+                    await self._log("SUCCESS", f"🎉 IT'S A MATCH! You and '{username}' (ID: {clean_uid}) are a match! Connection: {conn_id}")
+                    return True, f"Mutual Match confirmed with '{username}'!", {"is_mutual": True, "connection_id": conn_id}
                 else:
-                    err_msg = res.get("error") or "Mingle2 rejected rate_only request"
-                    await self._log("WARN", f"Failed to like '{username}' (ID: {clean_uid}): {err_msg}")
-                    return False, err_msg, data
+                    await self._log("SUCCESS", f"Liked '{username}' (ID: {clean_uid}) on Mingle2 ✓ (Notification delivered to candidate)")
+                    return True, f"Successfully liked '{username}' on Mingle2", {"is_mutual": False}
+            else:
+                err_msg = (data.get("error") if isinstance(data, dict) else None) or (res.get("error") if isinstance(res, dict) else None) or "Mingle2 rejected rate_only request"
+                await self._log("WARN", f"Failed to like '{username}' (ID: {clean_uid}): {err_msg}")
+                return False, err_msg, data if isinstance(data, dict) else {}
 
-            except Exception as e:
-                await self._log("ERROR", f"Error in rate_user_direct for '{username}': {e}")
-                try:
-                    await page.close()
-                except Exception:
-                    pass
-                return False, str(e), {}
+        except Exception as e:
+            await self._log("ERROR", f"Error in rate_user_direct for '{username}': {e}")
+            try:
+                await page.close()
+            except Exception:
+                pass
+            return False, str(e), {}
+
+        return False, "Direct rate operation completed without confirmation", {}
+
+    async def rate_user_direct(self, user_id: str, username: str = "User") -> Tuple[bool, str, Dict[str, Any]]:
+        """Directly likes a user on Mingle2 via POST /mutual_match/rate_only under lock."""
+        async with self._lock:
+            return await self._rate_user_direct_unlocked(user_id, username)
 
     async def like_user(self, user_info: Dict[str, Any], is_test_mode: Optional[bool] = None) -> Tuple[bool, str, str]:
         """
@@ -1803,9 +1809,17 @@ class Mingle2BotEngine:
                 # (e.g. user originated from search/online and is not in deck)
                 await page.close()
                 await self._log("INFO", f"Candidate card for '{username}' (ID: {user_id}) not in active match deck. Using direct rate verification fallback...")
-                direct_ok, direct_msg, direct_details = await self.rate_user_direct(user_id, username)
+                direct_res = await self._rate_user_direct_unlocked(user_id, username)
+                if isinstance(direct_res, tuple) and len(direct_res) >= 3:
+                    direct_ok, direct_msg, direct_details = direct_res[0], direct_res[1], direct_res[2]
+                elif isinstance(direct_res, tuple) and len(direct_res) == 2:
+                    direct_ok, direct_msg = direct_res[0], direct_res[1]
+                    direct_details = {}
+                else:
+                    direct_ok, direct_msg, direct_details = False, f"Unexpected fallback return: {direct_res}", {}
+
                 if direct_ok:
-                    match_str = " (MUTUAL MATCH CONFIRMED!)" if direct_details.get("is_mutual") else ""
+                    match_str = " (MUTUAL MATCH CONFIRMED!)" if (isinstance(direct_details, dict) and direct_details.get("is_mutual")) else ""
                     return True, f"Like confirmed on Mingle2 for '{username}' (ID: {user_id}){match_str}", "COMPLETED"
                 else:
                     return False, f"Failed liking '{username}': {direct_msg}", "EXECUTION_FAILED"

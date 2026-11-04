@@ -55,13 +55,16 @@ class BotScheduler:
         await self._on_engine_log("SUCCESS", "Mingle2 automation bot started.")
         await self._emit("state_change", {"state": self.state})
 
-        # Automatically recover any tasks left orphaned in RUNNING status from previous restart
+        # Automatically recover any tasks or likes left orphaned in RUNNING/EXECUTING status from previous restart
         try:
             recovered_count = await database.recover_orphaned_tasks()
             if recovered_count > 0:
                 await self._on_engine_log("INFO", f"Recovered {recovered_count} interrupted task(s) back to PENDING.")
+            recovered_likes = await database.recover_orphaned_likes()
+            if recovered_likes > 0:
+                await self._on_engine_log("INFO", f"Recovered {recovered_likes} stuck like(s) back to WAITING.")
         except Exception as rec_err:
-            logger.debug(f"Task recovery notice: {rec_err}")
+            logger.debug(f"Task/Like recovery notice: {rec_err}")
 
         if not self._scan_task or self._scan_task.done():
             self._scan_task = asyncio.create_task(self._scan_loop())
@@ -355,18 +358,19 @@ class BotScheduler:
 
                 if self.state == "RUNNING" and not self._is_executing:
                     self._is_executing = True
-                    # 1. Process pending scheduled items whose persistent 5-minute countdown has elapsed
-                    now = datetime.now(timezone.utc)
-                    pending_items = await database.get_pending_likes(before_time=now, limit=3)
+                    try:
+                        # 1. Process pending scheduled items whose persistent 5-minute countdown has elapsed
+                        now = datetime.now(timezone.utc)
+                        pending_items = await database.get_pending_likes(before_time=now, limit=3)
 
-                    if pending_items:
-                        for item in pending_items:
-                            if self.state != "RUNNING":
-                                break
-                            await self._execute_single_like(item)
-                            await asyncio.sleep(random.uniform(2.5, 5.0))
-
-                    self._is_executing = False
+                        if pending_items:
+                            for item in pending_items:
+                                if self.state != "RUNNING":
+                                    break
+                                await self._execute_single_like(item)
+                                await asyncio.sleep(random.uniform(2.5, 5.0))
+                    finally:
+                        self._is_executing = False
 
                 interval = max(10, min(30, settings.scan_interval_seconds // 2))
                 await asyncio.sleep(interval)

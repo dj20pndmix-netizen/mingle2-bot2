@@ -1200,6 +1200,17 @@ async def save_stored_setting(key: str, value: Any) -> None:
         await db.commit()
 
 
+async def recover_orphaned_likes() -> int:
+    """Reset any queue items left in EXECUTING status back to WAITING after a server restart."""
+    async with aiosqlite.connect(settings.db_path) as db:
+        cursor = await db.execute(
+            "UPDATE likes_queue SET status = 'WAITING', updated_at = ? WHERE status = 'EXECUTING'",
+            (datetime.now(timezone.utc).isoformat(),)
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 async def recover_orphaned_tasks() -> int:
     """Reset any tasks left in RUNNING status back to PENDING after a server restart."""
     async with aiosqlite.connect(settings.db_path) as db:
